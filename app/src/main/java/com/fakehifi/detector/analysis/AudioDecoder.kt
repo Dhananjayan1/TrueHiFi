@@ -77,9 +77,6 @@ object AudioDecoder {
             val declaredBitDepth = guessBitDepth(format) // Metadata doesn't always have a direct bit-depth key
             val declaredCodec = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE) ?: ""
 
-            // Must read this BEFORE we potentially overwrite KEY_PCM_ENCODING.
-            val sourceBitDepth = guessBitDepth(format)
-
             val mime = format.getString(MediaFormat.KEY_MIME) ?: return null
 
             val activeCodec = MediaCodec.createDecoderByType(mime)
@@ -88,14 +85,22 @@ object AudioDecoder {
             activeCodec.start()
 
             // After start, wait for output format to see what the hardware decoder REALLY outputs
+            val outputFormat = activeCodec.outputFormat
             val encoding = try {
-                // We'll check the output format after the first dequeue to be more accurate, 
-                // but for now, we'll use a conservative default.
-                activeCodec.outputFormat.getInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
+                outputFormat.getInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
             } catch (e: Exception) {
                 AudioFormat.ENCODING_PCM_16BIT
             }
             val achievedFloat = encoding == AudioFormat.ENCODING_PCM_FLOAT
+            
+            // Map the physical encoding to a bit-depth number for analysis
+            val sourceBitDepth = when (encoding) {
+                AudioFormat.ENCODING_PCM_FLOAT -> 24 // effectively 24 or 32
+                AudioFormat.ENCODING_PCM_16BIT -> 16
+                AudioFormat.ENCODING_PCM_8BIT -> 8
+                21, 22 -> 24 // ENCODING_PCM_24BIT_PACKED / ENCODING_PCM_32BIT (API 31+)
+                else -> 16
+            }
 
             val windows = mutableListOf<FloatArray>()
             val integerWindows = if (!achievedFloat) mutableListOf<IntArray>() else null
