@@ -20,39 +20,47 @@ import com.fakehifi.detector.repository.ScanRepository
 import com.fakehifi.detector.worker.ScanWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-@OptIn(FlowPreview::class)
+@OptIn(FlowPreview::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
-    // Apply sampling to the UI state to prevent Main thread bombardment during batch scans.
-    // The background ScanWorker continues to update the repository at full speed.
-    val uiState: StateFlow<ScanUiState> = ScanRepository.uiState
-        .sample(500L)
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = ScanRepository.uiState.value
-        )
-
     private val db = AppDatabase.get(application)
+    private val _sortOrder = MutableStateFlow(SortOrder.LATEST_FIRST)
+    val sortOrder: StateFlow<SortOrder> = _sortOrder
 
-    init {
-        // Repopulate from the on-disk cache on first launch/process restart,
-        // so previous scan results aren't lost until the user rescans.
-        viewModelScope.launch {
-            if (ScanRepository.uiState.value.results.isEmpty()) {
-                val cached = withContext(Dispatchers.IO) { db.trackResultDao().getAll() }
-                if (cached.isNotEmpty()) {
-                    ScanRepository.update { it.copy(results = cached.map { entity -> entity.toTrackResult() }) }
-                }
+    // Combine scanning status from repository with sorted results from database
+    val uiState: StateFlow<ScanUiState> = combine(
+        ScanRepository.uiState,
+        _sortOrder.flatMapLatest { order ->
+            when (order) {
+                SortOrder.TITLE_A_TO_Z -> db.trackResultDao().observeAllByTitle()
+                SortOrder.LATEST_FIRST -> db.trackResultDao().observeAllByLatest()
             }
         }
+    ) { repoState, dbResults ->
+        repoState.copy(
+            results = dbResults.map { it.toTrackResult() },
+            sortOrder = _sortOrder.value
+        )
+    }
+    .sample(500L)
+    .stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = ScanRepository.uiState.value
+    )
+
+    init {
+        // Initial setup if needed, but results are now driven by the combined Flow
     }
 
     fun startScan() {
@@ -87,7 +95,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setSortOrder(order: SortOrder) {
-        ScanRepository.update { it.copy(sortOrder = order) }
+        _sortOrder.value = order
     }
 
     fun setSearchQuery(query: String) {

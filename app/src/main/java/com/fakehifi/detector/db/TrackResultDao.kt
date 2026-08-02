@@ -12,6 +12,12 @@ interface TrackResultDao {
     @Query("SELECT * FROM track_results")
     fun observeAll(): Flow<List<TrackResultEntity>>
 
+    @Query("SELECT * FROM track_results ORDER BY title ASC")
+    fun observeAllByTitle(): Flow<List<TrackResultEntity>>
+
+    @Query("SELECT * FROM track_results ORDER BY dateAdded DESC")
+    fun observeAllByLatest(): Flow<List<TrackResultEntity>>
+
     @Query("SELECT * FROM track_results")
     suspend fun getAll(): List<TrackResultEntity>
 

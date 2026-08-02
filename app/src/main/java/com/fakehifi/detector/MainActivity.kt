@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -373,15 +374,16 @@ fun MainScreen(
                                 Icon(Icons.Filled.Sort, contentDescription = "Sort")
                             }
                             DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                                DropdownMenuItem(text = { Text("By verdict") }, onClick = {
-                                    showSortMenu = false; viewModel.setSortOrder(SortOrder.VERDICT)
-                                })
-                                DropdownMenuItem(text = { Text("By name") }, onClick = {
-                                    showSortMenu = false; viewModel.setSortOrder(SortOrder.NAME)
-                                })
-                                DropdownMenuItem(text = { Text("By confidence") }, onClick = {
-                                    showSortMenu = false; viewModel.setSortOrder(SortOrder.CONFIDENCE)
-                                })
+                                DropdownMenuItem(
+                                    text = { Text("Latest First") },
+                                    leadingIcon = { if (uiState.sortOrder == SortOrder.LATEST_FIRST) Icon(Icons.Default.Check, null) },
+                                    onClick = { showSortMenu = false; viewModel.setSortOrder(SortOrder.LATEST_FIRST) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("A-Z (Title)") },
+                                    leadingIcon = { if (uiState.sortOrder == SortOrder.TITLE_A_TO_Z) Icon(Icons.Default.Check, null) },
+                                    onClick = { showSortMenu = false; viewModel.setSortOrder(SortOrder.TITLE_A_TO_Z) }
+                                )
                             }
                         }
                     }

@@ -324,6 +324,12 @@ private fun SpectrogramView(result: TrackResult, modifier: Modifier = Modifier) 
         generateSpectrogramBitmap(result.multiSpectrums)
     }
 
+    DisposableEffect(result.track.filePath) {
+        onDispose {
+            spectrogramBitmap?.recycle()
+        }
+    }
+
     Column(modifier = modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier

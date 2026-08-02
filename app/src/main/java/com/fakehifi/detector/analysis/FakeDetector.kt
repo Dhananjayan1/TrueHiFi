@@ -46,7 +46,6 @@ object FakeDetector {
         val slope = spectral.rolloffSlopeDbPerKhz
         var verdict: Verdict
         var reason: String
-        var confidence = spectral.confidencePercent
 
         val estimatedBitrate = estimateOriginalBitrate(cutoffHz)
 
@@ -54,33 +53,33 @@ object FakeDetector {
         val targetGenuineHz = if (sampleRateHz <= 48000) 19500 else 24000
 
         val breakdown = mutableListOf<ConfidenceContribution>()
-        breakdown.add(ConfidenceContribution("Spectral Baseline", spectral.baseScore, "Initial analysis baseline"))
+        
+        // 1. Spectral Analysis Contribution (Capped at 30%)
+        val rawSpectralBonus = spectral.slopeBonus - spectral.consistencyPenalty - spectral.sampleSizePenalty
+        val spectralContribution = rawSpectralBonus.coerceIn(-30, 30)
+        
+        breakdown.add(ConfidenceContribution("Spectral Analysis", spectralContribution, "Based on slope, consistency, and sample size"))
 
         if (cutoffHz < targetGenuineHz - 2000) {
+            // Informational only, doesn't affect confidence directly here as it's part of the verdict decision
             breakdown.add(ConfidenceContribution("Spectral Bandwidth", 0, "Sharp spectral cutoff detected at ${cutoffHz / 1000.0} kHz"))
         }
 
-        if (spectral.slopeBonus > 0) {
-            breakdown.add(ConfidenceContribution("Spectral Slope", spectral.slopeBonus, "Brick-wall spectral slope aligns with lossy profiles"))
-        }
-        if (spectral.consistencyPenalty > 0) {
-            breakdown.add(ConfidenceContribution("Temporal Consistency", -spectral.consistencyPenalty, "Cutoff varies between analysis windows"))
-        }
-        if (spectral.sampleSizePenalty > 0) {
-            breakdown.add(ConfidenceContribution("Sample Size", -spectral.sampleSizePenalty, "Insufficient audio data for high-confidence result"))
-        }
-
-        // Metadata Verification Cross-Check
+        // 2. Metadata Verification Contribution (Capped at 15%)
         var metadataMismatch = MetadataMismatch(false)
+        var metadataContribution = 0
         if (format.declaredBitDepth > 0 && bitDepth < format.declaredBitDepth) {
             metadataMismatch = MetadataMismatch(true, "Declared ${format.declaredBitDepth}-bit, but physically decoded as ${bitDepth}-bit")
-            breakdown.add(ConfidenceContribution("Metadata Mismatch", -20, "Container claims higher bit-depth than physical stream supports"))
-            confidence = (confidence - 20).coerceAtLeast(5)
+            metadataContribution = -15
+            breakdown.add(ConfidenceContribution("Metadata Mismatch", metadataContribution, "Container claims higher bit-depth than physical stream"))
         } else if (format.declaredSampleRateHz > 0 && sampleRateHz != format.declaredSampleRateHz) {
             metadataMismatch = MetadataMismatch(true, "Declared ${format.declaredSampleRateHz}Hz, but physically decoded as ${sampleRateHz}Hz")
-            breakdown.add(ConfidenceContribution("Metadata Mismatch", -10, "Container sample rate does not match decoded stream"))
-            confidence = (confidence - 10).coerceAtLeast(5)
+            metadataContribution = -10
+            breakdown.add(ConfidenceContribution("Metadata Mismatch", metadataContribution, "Container sample rate does not match decoded stream"))
         }
+
+        // Initialize confidence with base and core contributions
+        var confidence = (60 + spectralContribution + metadataContribution).coerceIn(10, 90)
 
         when {
             // 1. Clear lossy cutoffs (below ~19kHz) with sharp brick-wall
@@ -129,15 +128,16 @@ object FakeDetector {
             }
         }
 
-        // Independent signal: Joint Stereo Collapse (Codec artifact)
+        // 3. Stereo Integrity Contribution (Capped at 20%)
         if (stereoResult != null && stereoResult.hasJointStereoCollapse) {
             val ratioPercent = (stereoResult.sideToMidHighFreqRatio * 100).toInt()
             reason = "$reason Also, detected a 'Joint Stereo Collapse' artifact: Side-channel high-frequency energy " +
                     "is only $ratioPercent% of Mid energy, a strong signature of lossy codecs."
             
-            breakdown.add(ConfidenceContribution("Stereo Integrity", stereoResult.confidencePenalty, "Side-channel high-frequency energy collapse"))
+            val stereoContribution = stereoResult.confidencePenalty.coerceAtMost(20)
+            breakdown.add(ConfidenceContribution("Stereo Integrity", stereoContribution, "Side-channel high-frequency energy collapse"))
             
-            confidence = (confidence + stereoResult.confidencePenalty).coerceAtMost(99)
+            confidence = (confidence + stereoContribution).coerceAtMost(99)
             verdict = when (verdict) {
                 Verdict.GENUINE -> Verdict.SUSPICIOUS
                 Verdict.SUSPICIOUS -> Verdict.FAKE
@@ -145,16 +145,17 @@ object FakeDetector {
             }
         }
 
-        // Independent signal: claims >16-bit but the extra bits are silent/padded.
+        // 4. Bit-Depth Audit Contribution (Capped at 15%)
         if (bitDepth > 16) {
             if (bitDepthResult != null && bitDepthResult.checked) {
                 if (bitDepthResult.looksPadded) {
                     reason = "$reason Also, ${bitDepthResult.zeroLowBytePercent}% of the lowest byte in " +
                             "this ${bitDepth}-bit file is exactly zero — the extra bit depth appears to carry no real information."
                     
-                    breakdown.add(ConfidenceContribution("Bit-Depth Audit", 15, "Lowest byte is mostly zero-padded"))
+                    val bitDepthContribution = 15
+                    breakdown.add(ConfidenceContribution("Bit-Depth Audit", bitDepthContribution, "Lowest byte is mostly zero-padded"))
                     
-                    confidence = (confidence + 15).coerceAtMost(99)
+                    confidence = (confidence + bitDepthContribution).coerceAtMost(99)
                     verdict = when (verdict) {
                         Verdict.GENUINE -> Verdict.SUSPICIOUS
                         Verdict.SUSPICIOUS -> Verdict.FAKE
@@ -165,20 +166,22 @@ object FakeDetector {
                 // Document limitation: decoder provided float or truncated samples.
                 reason = "$reason Note: Bit-depth padding audit was bypassed (decoder limitation for this format)."
                 
-                breakdown.add(ConfidenceContribution("Format Audit", -5, "Bit-depth padding check was bypassed"))
+                val bitDepthPenalty = -5
+                breakdown.add(ConfidenceContribution("Format Audit", bitDepthPenalty, "Bit-depth padding check was bypassed"))
                 
                 // Lower the weight of the result by slightly reducing confidence 
                 // because we are missing one independent signal.
-                confidence = (confidence - 5).coerceAtLeast(5)
+                confidence = (confidence + bitDepthPenalty).coerceAtLeast(5)
             }
         }
 
         if (isDeepScan) {
             reason = "$reason (deep scan, ${AudioDecoder.DEEP_SCAN_WINDOW_COUNT} windows analyzed)"
             
-            breakdown.add(ConfidenceContribution("Deep Scan", 10, "Extended analysis window count bonus"))
+            val deepScanBonus = 10
+            breakdown.add(ConfidenceContribution("Deep Scan", deepScanBonus, "Extended analysis window count bonus"))
             
-            confidence = (confidence + 10).coerceAtMost(99)
+            confidence = (confidence + deepScanBonus).coerceAtMost(99)
         }
 
         return TrackResult(

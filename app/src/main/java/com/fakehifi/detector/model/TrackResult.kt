@@ -6,7 +6,7 @@ import com.fakehifi.detector.analysis.StereoResult
 
 enum class Verdict { GENUINE, SUSPICIOUS, FAKE, UNKNOWN }
 
-enum class SortOrder { VERDICT, NAME, CONFIDENCE }
+enum class SortOrder { TITLE_A_TO_Z, LATEST_FIRST }
 
 data class TrackInfo(
     val uri: String,
@@ -14,7 +14,7 @@ data class TrackInfo(
     val artist: String,
     val filePath: String,
     val sizeBytes: Long,
-    val dateModifiedSec: Long,
+    val dateAdded: Long,
     val durationMs: Long
 )
 

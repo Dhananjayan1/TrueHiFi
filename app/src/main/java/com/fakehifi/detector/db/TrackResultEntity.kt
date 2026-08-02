@@ -22,7 +22,7 @@ data class TrackResultEntity(
     val title: String,
     val artist: String,
     val sizeBytes: Long,
-    val dateModifiedSec: Long,
+    val dateAdded: Long,
     val durationMs: Long,
     val sampleRateHz: Int,
     val bitDepth: Int,
@@ -50,7 +50,7 @@ data class TrackResultEntity(
     val spectrumBinHz: Double
 ) {
     fun toTrackResult(): TrackResult = TrackResult(
-        track = TrackInfo(uri, title, artist, filePath, sizeBytes, dateModifiedSec, durationMs),
+        track = TrackInfo(uri, title, artist, filePath, sizeBytes, dateAdded, durationMs),
         sampleRateHz = sampleRateHz,
         bitDepth = bitDepth,
         detectedCutoffHz = detectedCutoffHz,
@@ -78,7 +78,7 @@ data class TrackResultEntity(
             title = result.track.title,
             artist = result.track.artist,
             sizeBytes = result.track.sizeBytes,
-            dateModifiedSec = result.track.dateModifiedSec,
+            dateAdded = result.track.dateAdded,
             durationMs = result.track.durationMs,
             sampleRateHz = result.sampleRateHz,
             bitDepth = result.bitDepth,

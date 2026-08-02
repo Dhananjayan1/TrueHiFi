@@ -30,42 +30,56 @@ object SpectralAnalyzer : AudioAnalyzerComponent {
         val usable = windows.filter { it.size >= FFT_SIZE }
         if (usable.isEmpty() || sampleRateHz <= 0) return SpectralResult(0, 0, 0.0, 0.0, emptyList(), emptyList())
 
-        // Time-Domain Silence Detection
-        val windowRmsDb = usable.map { calculateRmsDb(it) }
-        val sortedRms = windowRmsDb.sorted()
-        val medianRmsDb = sortedRms[sortedRms.size / 2]
+        // Representative Window Selection:
+        // Instead of just gating quiet windows, we pick a stratified sample that covers 
+        // the full dynamic range (loud, medium, quiet) to ensure the algorithm sees 
+        // codec behavior across all energy levels.
+        val windowsWithRms = usable.map { it to calculateRmsDb(it) }
+            .filter { it.second > -100.0 } // Exclude absolute digital zero
+            .sortedByDescending { it.second }
+
+        if (windowsWithRms.isEmpty()) return SpectralResult(0, 0, 0.0, 0.0, emptyList(), emptyList())
+
+        val selectedIndices = mutableSetOf<Int>()
+        // 1. Always include the loudest windows (best SNR for cutoff)
+        selectedIndices.add(0)
+        if (windowsWithRms.size > 1) selectedIndices.add(1)
+        
+        // 2. Include medium windows
+        if (windowsWithRms.size > 3) {
+            selectedIndices.add(windowsWithRms.size / 2)
+            selectedIndices.add(windowsWithRms.size / 2 + 1)
+        }
+        
+        // 3. Include quiet windows (where compression artifacts like ringing are most visible)
+        if (windowsWithRms.size > 5) {
+            selectedIndices.add(windowsWithRms.size - 1)
+            selectedIndices.add(windowsWithRms.size - 2)
+        } else if (windowsWithRms.size > 2) {
+            selectedIndices.add(windowsWithRms.size - 1)
+        }
+
+        val representativeWindows = windowsWithRms.filterIndexed { index, _ -> selectedIndices.contains(index) }
 
         val binHz = sampleRateHz.toDouble() / FFT_SIZE
         val accumulated = DoubleArray(FFT_SIZE / 2)
         val perWindowCutoffs = mutableListOf<Int>()
         val multiSpectrums = mutableListOf<List<Double>>()
-        var accumulatedCount = 0
 
-        for (i in usable.indices) {
-            val window = usable[i]
-            val rmsDb = windowRmsDb[i]
-
-            // Relative Gate: Skip silence chunks (-60dB below median) to save CPU (bypass FFT)
-            if (rmsDb < medianRmsDb - 60.0) continue
-
+        for ((window, rmsDb) in representativeWindows) {
             val mag = magnitudeSpectrum(window)
             for (j in mag.indices) accumulated[j] += mag[j]
-            perWindowCutoffs.add(findCutoffHz(mag, binHz))
-            accumulatedCount++
+            perWindowCutoffs.add(findCutoffHz(mag, binHz, sampleRateHz))
             
             // Collect individual window spectrums for visualization
             val magDb = DoubleArray(mag.size) { k -> 20 * log10(max(mag[k], 1e-9)) }
             multiSpectrums.add(downsample(magDb, PLOT_POINTS))
         }
 
-        if (accumulatedCount == 0) {
-            // All windows were silence or track is pure digital zero
-            return SpectralResult(0, 0, 0.0, 0.0, emptyList(), emptyList())
-        }
+        val processedCount = representativeWindows.size
+        for (i in accumulated.indices) accumulated[i] = accumulated[i] / processedCount
 
-        for (i in accumulated.indices) accumulated[i] = accumulated[i] / accumulatedCount
-
-        val avgCutoffHz = findCutoffHz(accumulated, binHz)
+        val avgCutoffHz = findCutoffHz(accumulated, binHz, sampleRateHz)
         val avgMagDb = DoubleArray(accumulated.size) { i -> 20 * log10(max(accumulated[i], 1e-9)) }
 
         val slope = calculateRolloffSlope(avgMagDb, avgCutoffHz, binHz)
@@ -79,7 +93,7 @@ object SpectralAnalyzer : AudioAnalyzerComponent {
 
         val slopeBonus = transitionSteepnessScore(slope)
         val consistencyPenalty = (stdDev / 2000.0 * 40).toInt().coerceIn(0, 40)
-        val sampleSizePenalty = ((6 - accumulatedCount).coerceAtLeast(0) * 5)
+        val sampleSizePenalty = ((6 - processedCount).coerceAtLeast(0) * 5)
 
         val baseScore = 60
         val confidence = (baseScore + slopeBonus - consistencyPenalty - sampleSizePenalty).coerceIn(5, 99)
@@ -123,22 +137,35 @@ object SpectralAnalyzer : AudioAnalyzerComponent {
         return DoubleArray(FFT_SIZE / 2) { i -> sqrt(real[i] * real[i] + imag[i] * imag[i]) }
     }
 
-    private fun findCutoffHz(magnitudeLinear: DoubleArray, binHz: Double): Int {
+    private fun findCutoffHz(magnitudeLinear: DoubleArray, binHz: Double, sampleRateHz: Int): Int {
         val magDb = DoubleArray(magnitudeLinear.size) { i -> 20 * log10(max(magnitudeLinear[i], 1e-9)) }
 
-        // Empirical Noise Floor Calculation
-        // We establish the noise floor by calculating the median energy specifically 
-        // in the 20kHz–22kHz range (the standard noise floor band). This avoids 
-        // busy signal in lower frequencies artificially raising the floor.
-        val floorStartBin = (20000 / binHz).toInt().coerceIn(0, magDb.size - 1)
-        val floorEndBin = (22000 / binHz).toInt().coerceIn(floorStartBin, magDb.size - 1)
+        // Statistical Noise Floor Estimator:
+        // We establish a robust noise floor by analyzing the distribution of bins across 
+        // a broad frequency range (avoiding the lowest frequencies which often contain DC/hum).
+        val analysisStartBin = (4000 / binHz).toInt().coerceIn(0, magDb.size - 1)
+        val highBins = magDb.sliceArray(analysisStartBin until magDb.size).sortedArray()
         
-        val noiseFloorDb = if (floorEndBin > floorStartBin) {
+        // Use the 15th percentile as a robust estimate for the noise floor.
+        // This rejects peaks (musical content) and focuses on the underlying noise floor.
+        val statisticalFloor = if (highBins.isNotEmpty()) {
+            highBins[(highBins.size * 0.15).toInt()]
+        } else -100.0
+
+        // Band-specific Heuristic (Fallback for validation):
+        val floorStartHz = (if (sampleRateHz <= 48000) 20000.0 else (sampleRateHz / 2.0) - 4000.0).coerceAtLeast(4000.0)
+        val floorEndHz = (floorStartHz + 2000.0).coerceAtMost(sampleRateHz / 2.0 - 100.0)
+        val floorStartBin = (floorStartHz / binHz).toInt().coerceIn(0, magDb.size - 1)
+        val floorEndBin = (floorEndHz / binHz).toInt().coerceIn(floorStartBin, magDb.size - 1)
+        
+        val heuristicFloor = if (floorEndBin > floorStartBin) {
             val floorBins = magDb.sliceArray(floorStartBin..floorEndBin).sortedArray()
-            floorBins[floorBins.size / 2] + 15.0 // Median + 15dB margin
-        } else {
-            -85.0 // Fallback for low sample rates
-        }
+            floorBins[floorBins.size / 2]
+        } else -85.0
+
+        // Establish the definitive noise floor with a safety margin.
+        // We take the higher of the two (more conservative) to avoid false cutoff detections.
+        val noiseFloorDb = max(statisticalFloor, heuristicFloor) + 15.0
 
         val sortedMag = magDb.sortedArray()
         val quartileSize = (sortedMag.size * 0.25).toInt().coerceAtLeast(1)

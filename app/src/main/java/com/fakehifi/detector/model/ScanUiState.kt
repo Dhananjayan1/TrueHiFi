@@ -33,17 +33,7 @@ data class ScanUiState(
                 }
             }
 
-            return when (sortOrder) {
-                SortOrder.VERDICT -> filtered.sortedBy { verdictRank(it.verdict) }
-                SortOrder.NAME -> filtered.sortedBy { it.track.title.lowercase() }
-                SortOrder.CONFIDENCE -> filtered.sortedByDescending { it.confidencePercent }
-            }
+            // Results are already sorted by the database layer.
+            return filtered
         }
-
-    private fun verdictRank(v: Verdict) = when (v) {
-        Verdict.FAKE -> 0
-        Verdict.SUSPICIOUS -> 1
-        Verdict.UNKNOWN -> 2
-        Verdict.GENUINE -> 3
-    }
 }

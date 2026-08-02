@@ -70,7 +70,7 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             val cached = withContext(Dispatchers.IO) { db.trackResultDao().findByPath(track.filePath) }
             val result = if (cached != null &&
                 cached.sizeBytes == track.sizeBytes &&
-                cached.dateModifiedSec == track.dateModifiedSec
+                cached.dateAdded == track.dateAdded
             ) {
                 cached.toTrackResult()
             } else {
@@ -82,7 +82,13 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             }
 
             results.add(result)
-            ScanRepository.update { it.copy(scannedTracks = index + 1, results = results.toList()) }
+            // Batch updates to the repository results list to avoid O(N^2) copies on every track.
+            // Progress count and title still emit instantly for the notification.
+            if ((index + 1) % 10 == 0 || index == tracks.size - 1) {
+                ScanRepository.update { it.copy(scannedTracks = index + 1, results = results.toList()) }
+            } else {
+                ScanRepository.update { it.copy(scannedTracks = index + 1) }
+            }
         }
 
         ScanRepository.update { it.copy(isScanning = false, currentTitle = "") }

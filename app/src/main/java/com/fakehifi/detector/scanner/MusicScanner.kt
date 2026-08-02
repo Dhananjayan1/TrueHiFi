@@ -55,7 +55,7 @@ object MusicScanner {
                         artist = cursor.getString(artistCol) ?: "Unknown",
                         filePath = cursor.getString(dataCol) ?: "",
                         sizeBytes = cursor.getLong(sizeCol),
-                        dateModifiedSec = cursor.getLong(dateModCol),
+                        dateAdded = cursor.getLong(dateModCol),
                         durationMs = cursor.getLong(durCol)
                     )
                 )
