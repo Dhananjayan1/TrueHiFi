@@ -1,0 +1,446 @@
+package com.fakehifi.detector
+
+import android.Manifest
+import android.app.Activity
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import com.fakehifi.detector.model.ResultFilter
+import com.fakehifi.detector.model.SortOrder
+import com.fakehifi.detector.model.TrackInfo
+import com.fakehifi.detector.model.TrackResult
+import com.fakehifi.detector.model.Verdict
+import com.fakehifi.detector.repository.UserPreferencesRepository
+import com.fakehifi.detector.ui.DetailScreen
+import com.fakehifi.detector.ui.OnboardingScreen
+import com.fakehifi.detector.ui.theme.TrueHiFiTheme
+import com.fakehifi.detector.ui.theme.VerdictFake
+import com.fakehifi.detector.ui.theme.VerdictGenuine
+import com.fakehifi.detector.ui.theme.VerdictSuspicious
+import com.fakehifi.detector.ui.theme.VerdictUnknown
+import com.fakehifi.detector.viewmodel.ScanViewModel
+import kotlinx.coroutines.launch
+import java.net.URLDecoder
+import java.net.URLEncoder
+
+class MainActivity : ComponentActivity() {
+
+    private val viewModel: ScanViewModel by viewModels()
+    private lateinit var userPreferencesRepository: UserPreferencesRepository
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        userPreferencesRepository = UserPreferencesRepository(this)
+
+        setContent {
+            val hasCompletedOnboarding by userPreferencesRepository.hasCompletedOnboarding.collectAsState(initial = null)
+
+            TrueHiFiTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    if (hasCompletedOnboarding != null) {
+                        AppNavHost(
+                            viewModel = viewModel,
+                            startDestination = if (hasCompletedOnboarding == true) "list" else "onboarding",
+                            onOnboardingComplete = {
+                                lifecycleScope.launch { userPreferencesRepository.setCompletedOnboarding(true) }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AppNavHost(
+    viewModel: ScanViewModel,
+    startDestination: String,
+    onOnboardingComplete: () -> Unit
+) {
+    val navController = rememberNavController()
+    val uiState by viewModel.uiState.collectAsState()
+
+    var pendingUris by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    val permissions = remember {
+        buildList {
+            add(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
+            if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+        }.toTypedArray()
+    }
+
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        if (result[permissions[0]] == true) {
+            onOnboardingComplete()
+            navController.navigate("list") {
+                popUpTo("onboarding") { inclusive = true }
+            }
+        }
+    }
+
+    val deleteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            viewModel.onTracksDeleted(pendingUris)
+        }
+    }
+
+    fun launchDelete(uris: List<String>) {
+        if (uris.isEmpty()) return
+        viewModel.createDeleteRequest(uris)?.let { pendingIntent ->
+            pendingUris = uris
+            deleteLauncher.launch(IntentSenderRequest.Builder(pendingIntent).build())
+        }
+    }
+
+    NavHost(navController = navController, startDestination = startDestination) {
+        composable("onboarding") {
+            OnboardingScreen(
+                onPermissionsRequest = {
+                    launcher.launch(permissions)
+                }
+            )
+        }
+        composable("list") {
+            MainScreen(
+                viewModel = viewModel,
+                onDeleteTracks = { launchDelete(it) }
+            ) { track ->
+                navController.navigate("detail/${URLEncoder.encode(track.uri, "UTF-8")}")
+            }
+        }
+        composable(
+            "detail/{uri}",
+            arguments = listOf(navArgument("uri") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val encodedUri = backStackEntry.arguments?.getString("uri") ?: return@composable
+            val uri = URLDecoder.decode(encodedUri, "UTF-8")
+            val result = uiState.results.find { it.track.uri == uri }
+            if (result != null) {
+                DetailScreen(
+                    result = result,
+                    isScanning = uiState.isScanning,
+                    onBack = { navController.popBackStack() },
+                    onDeepScan = { viewModel.startDeepScan(uri) },
+                    onDelete = {
+                        launchDelete(listOf(uri))
+                        navController.popBackStack()
+                    }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MainScreen(
+    viewModel: ScanViewModel,
+    onDeleteTracks: (List<String>) -> Unit,
+    onTrackClick: (TrackInfo) -> Unit
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    var hasPermission by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
+    var showDeleteBatchMenu by remember { mutableStateOf(false) }
+
+    val permissions = remember {
+        buildList {
+            add(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
+            if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+        }.toTypedArray()
+    }
+
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result -> hasPermission = result[permissions[0]] == true }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    if (uiState.isSelectionMode) {
+                        Text("${uiState.selectedUris.size} Selected")
+                    } else {
+                        Text("TrueHiFi")
+                    }
+                },
+                navigationIcon = {
+                    if (uiState.isSelectionMode) {
+                        IconButton(onClick = { viewModel.clearSelection() }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Clear Selection")
+                        }
+                    }
+                },
+                actions = {
+                    if (uiState.isSelectionMode) {
+                        IconButton(onClick = { onDeleteTracks(uiState.selectedUris.toList()) }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Delete Selected", tint = MaterialTheme.colorScheme.error)
+                        }
+                    } else {
+                        val canDelete = when (uiState.filter) {
+                            ResultFilter.FAKE -> uiState.results.any { it.verdict == Verdict.FAKE }
+                            ResultFilter.SUSPICIOUS -> uiState.results.any { it.verdict == Verdict.SUSPICIOUS }
+                            ResultFilter.ALL -> uiState.results.any { it.verdict == Verdict.FAKE || it.verdict == Verdict.SUSPICIOUS }
+                            else -> false
+                        }
+
+                        if (canDelete) {
+                            Box {
+                                IconButton(onClick = {
+                                    when (uiState.filter) {
+                                        ResultFilter.FAKE -> onDeleteTracks(uiState.results.filter { it.verdict == Verdict.FAKE }.map { it.track.uri })
+                                        ResultFilter.SUSPICIOUS -> onDeleteTracks(uiState.results.filter { it.verdict == Verdict.SUSPICIOUS }.map { it.track.uri })
+                                        ResultFilter.ALL -> showDeleteBatchMenu = true
+                                        else -> {}
+                                    }
+                                }) {
+                                    Icon(Icons.Filled.Delete, contentDescription = "Delete items", tint = MaterialTheme.colorScheme.error)
+                                }
+                                DropdownMenu(expanded = showDeleteBatchMenu, onDismissRequest = { showDeleteBatchMenu = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text("Delete all FAKES") },
+                                        onClick = {
+                                            showDeleteBatchMenu = false
+                                            onDeleteTracks(uiState.results.filter { it.verdict == Verdict.FAKE }.map { it.track.uri })
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Delete all SUSPICIOUS") },
+                                        onClick = {
+                                            showDeleteBatchMenu = false
+                                            onDeleteTracks(uiState.results.filter { it.verdict == Verdict.SUSPICIOUS }.map { it.track.uri })
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        Box {
+                            IconButton(onClick = { showOverflowMenu = true }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                            }
+                            DropdownMenu(expanded = showOverflowMenu, onDismissRequest = { showOverflowMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Clear cache & rescan") },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        viewModel.clearCacheAndResults()
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            )
+        },
+        floatingActionButton = {
+            if (!uiState.isSelectionMode) {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        if (!hasPermission) launcher.launch(permissions) else viewModel.startScan()
+                    },
+                    expanded = !uiState.isScanning,
+                    icon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
+                    text = { Text("Scan Library") }
+                )
+            }
+        }
+    ) { padding ->
+        Column(modifier = Modifier.padding(padding).fillMaxSize().padding(horizontal = 16.dp)) {
+            if (uiState.isScanning) {
+                Spacer(Modifier.height(8.dp))
+                val progress = if (uiState.totalTracks > 0)
+                    uiState.scannedTracks / uiState.totalTracks.toFloat() else 0f
+                LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${uiState.scannedTracks}/${uiState.totalTracks} — ${uiState.currentTitle}",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { viewModel.cancelScan() }) {
+                        Text("Cancel")
+                    }
+                }
+                Text(
+                    "Scan keeps running even if you leave the app — check the notification.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (uiState.results.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                
+                OutlinedTextField(
+                    value = uiState.searchQuery,
+                    onValueChange = { viewModel.setSearchQuery(it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Search tracks, artists, or filenames...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    singleLine = true
+                )
+                
+                Spacer(Modifier.height(8.dp))
+
+                val fakeCount = uiState.results.count { it.verdict == Verdict.FAKE }
+                val suspiciousCount = uiState.results.count { it.verdict == Verdict.SUSPICIOUS }
+                Text(
+                    "${uiState.results.size} lossless/hi-res files — $fakeCount fake, $suspiciousCount suspicious",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Spacer(Modifier.height(8.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FilterChipsRow(
+                        selected = uiState.filter,
+                        onSelect = { viewModel.setFilter(it) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box {
+                        IconButton(onClick = { showSortMenu = true }) {
+                            Icon(Icons.Filled.Sort, contentDescription = "Sort")
+                        }
+                        DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+                            DropdownMenuItem(text = { Text("By verdict") }, onClick = {
+                                showSortMenu = false; viewModel.setSortOrder(SortOrder.VERDICT)
+                            })
+                            DropdownMenuItem(text = { Text("By name") }, onClick = {
+                                showSortMenu = false; viewModel.setSortOrder(SortOrder.NAME)
+                            })
+                            DropdownMenuItem(text = { Text("By confidence") }, onClick = {
+                                showSortMenu = false; viewModel.setSortOrder(SortOrder.CONFIDENCE)
+                            })
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                items(uiState.visibleResults, key = { it.track.filePath }) { result ->
+                    TrackRow(
+                        result = result,
+                        isSelected = uiState.selectedUris.contains(result.track.uri),
+                        isSelectionMode = uiState.isSelectionMode,
+                        onClick = {
+                            if (uiState.isSelectionMode) {
+                                viewModel.toggleSelection(result.track.uri)
+                            } else {
+                                onTrackClick(result.track)
+                            }
+                        },
+                        onLongClick = {
+                            viewModel.toggleSelection(result.track.uri)
+                        }
+                    )
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterChipsRow(selected: ResultFilter, onSelect: (ResultFilter) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier = modifier.horizontalScroll(rememberScrollState())) {
+        ResultFilter.entries.forEach { filter ->
+            FilterChip(
+                selected = selected == filter,
+                onClick = { onSelect(filter) },
+                label = { Text(filter.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                modifier = Modifier.padding(end = 6.dp)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun TrackRow(
+    result: TrackResult,
+    isSelected: Boolean,
+    isSelectionMode: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val color = when (result.verdict) {
+        Verdict.GENUINE -> VerdictGenuine
+        Verdict.SUSPICIOUS -> VerdictSuspicious
+        Verdict.FAKE -> VerdictFake
+        Verdict.UNKNOWN -> VerdictUnknown
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (isSelectionMode) {
+            Checkbox(checked = isSelected, onCheckedChange = { onClick() })
+            Spacer(Modifier.width(8.dp))
+        }
+
+        Box(modifier = Modifier.size(12.dp).background(color, shape = CircleShape))
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(result.track.title, style = MaterialTheme.typography.bodyLarge)
+            val qualitySuffix = result.qualityResult?.let { " · DR%.0f".format(it.dynamicRange) } ?: ""
+            val bitrateEstimation = if (result.originalBitrateKbps > 0) " · ~${result.originalBitrateKbps}kbps src" else ""
+            Text(
+                "${result.track.artist} · ${result.sampleRateHz / 1000}kHz/${result.bitDepth}-bit · " +
+                    "cutoff ~${result.detectedCutoffHz / 1000.0}kHz · ${result.confidencePercent}% confidence" +
+                    (if (result.isDeepScan) " · deep" else "") + qualitySuffix + bitrateEstimation,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
