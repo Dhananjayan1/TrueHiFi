@@ -9,19 +9,8 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="973976f8-71dc-4526-a11d-4ca27717a558" name="Changes" comment="necessary fixes to restore smooth UI performance and scan stability.">
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/db/TrackResultSummary.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/planningMode.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/planningMode.xml" afterDir="false" />
+    <list default="true" id="973976f8-71dc-4526-a11d-4ca27717a558" name="Changes" comment=" implemented the scientifically-backed improvements to the TrueHiFi analysis engine">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/MainActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/MainActivity.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/FakeDetector.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/FakeDetector.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/SpectralAnalyzer.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/SpectralAnalyzer.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/StereoAnalyzer.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/StereoAnalyzer.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/db/TrackResultDao.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/db/TrackResultDao.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/model/ScanUiState.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/model/ScanUiState.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/model/TrackResult.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/model/TrackResult.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/viewmodel/ScanViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/viewmodel/ScanViewModel.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/worker/ScanWorker.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/worker/ScanWorker.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -270,7 +259,23 @@
       <option name="project" value="LOCAL" />
       <updated>1785679520612</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="necessary fixes to restore smooth UI performance and scan stability.">
+      <option name="closed" value="true" />
+      <created>1785684241497</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1785684241497</updated>
+    </task>
+    <task id="LOCAL-00014" summary=" implemented the scientifically-backed improvements to the TrueHiFi analysis engine">
+      <option name="closed" value="true" />
+      <created>1785684488682</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1785684488682</updated>
+    </task>
+    <option name="localTasksCounter" value="15" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -278,7 +283,8 @@
     <MESSAGE value="Refactored audio analyzer and detector engine" />
     <MESSAGE value=" implemented the Sort by Latest feature" />
     <MESSAGE value="necessary fixes to restore smooth UI performance and scan stability." />
-    <option name="LAST_COMMIT_MESSAGE" value="necessary fixes to restore smooth UI performance and scan stability." />
+    <MESSAGE value=" implemented the scientifically-backed improvements to the TrueHiFi analysis engine" />
+    <option name="LAST_COMMIT_MESSAGE" value=" implemented the scientifically-backed improvements to the TrueHiFi analysis engine" />
   </component>
   <component name="play_dynamic_filters_status">
     <option name="appIdToCheckInfo">
