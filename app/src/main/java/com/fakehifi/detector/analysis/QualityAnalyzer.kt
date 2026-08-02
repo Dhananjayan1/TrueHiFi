@@ -10,15 +10,16 @@ data class QualityResult(
     val dynamicRange: Double, // Crest factor in dB
     val clippedSamplesCount: Long,
     val maxConsecutiveClipped: Int
-)
+) : ComponentResult
 
-object QualityAnalyzer {
+object QualityAnalyzer : AudioAnalyzerComponent {
 
     /**
      * Analyzes PCM samples to calculate peak, RMS, dynamic range, and clipping.
      * Operates on normalized floats [-1.0, 1.0].
      */
-    fun analyze(windows: List<FloatArray>): QualityResult {
+    override suspend fun analyze(context: AudioContext): QualityResult {
+        val windows = context.windows
         if (windows.isEmpty()) return QualityResult(0.0, 0.0, 0.0, 0, 0)
 
         var peakLinear = 0f

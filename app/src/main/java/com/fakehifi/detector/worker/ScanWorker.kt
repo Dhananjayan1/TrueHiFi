@@ -12,9 +12,12 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.ListenableWorker.Result as WorkResult
+import com.fakehifi.detector.analysis.AudioAnalyzerComponent
+import com.fakehifi.detector.analysis.AudioContext
 import com.fakehifi.detector.analysis.AudioDecoder
 import com.fakehifi.detector.analysis.BitDepthAnalyzer
 import com.fakehifi.detector.analysis.DecodedFormat
+import com.fakehifi.detector.analysis.DetectorEngine
 import com.fakehifi.detector.analysis.FakeDetector
 import com.fakehifi.detector.analysis.QualityAnalyzer
 import com.fakehifi.detector.analysis.SpectralAnalyzer
@@ -33,6 +36,7 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
 
     private val db = AppDatabase.get(context)
     private val notificationManager = context.getSystemService(NotificationManager::class.java)
+    private val detectorEngine = DetectorEngine()
 
     override suspend fun doWork(): WorkResult {
         val action = inputData.getString(KEY_ACTION)
@@ -123,13 +127,16 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                 isDeepScan = deep
             )
 
-        val spectral = SpectralAnalyzer.analyze(decoded.windows, decoded.format.sampleRateHz)
-        val bitDepthResult = BitDepthAnalyzer.analyze(decoded.integerWindows, decoded.format.bitDepth)
-        val qualityResult = QualityAnalyzer.analyze(decoded.windows)
-        val stereoResult = StereoAnalyzer.analyze(decoded.stereoWindows, decoded.format.sampleRateHz)
+        val audioContext = AudioContext(
+            track = track,
+            format = decoded.format,
+            windows = decoded.windows,
+            integerWindows = decoded.integerWindows,
+            stereoWindows = decoded.stereoWindows,
+            isDeepScan = deep
+        )
 
-        val baseResult = FakeDetector.classify(track, decoded.format, spectral, bitDepthResult, stereoResult, deep)
-        baseResult.copy(qualityResult = qualityResult)
+        detectorEngine.runAnalysis(audioContext)
     }
 
     private suspend fun updateForeground(text: String, progress: Int, max: Int) {

@@ -2,7 +2,7 @@ package com.fakehifi.detector.analysis
 
 import com.fakehifi.detector.model.BitDepthResult
 
-object BitDepthAnalyzer {
+object BitDepthAnalyzer : AudioAnalyzerComponent {
 
     /**
      * Looks at the lowest byte of an integer representation of each sample.
@@ -13,7 +13,10 @@ object BitDepthAnalyzer {
      * NOTE: This check is only performed on un-normalized integer PCM to
      * avoid artifacts from float conversion.
      */
-    fun analyze(integerWindows: List<IntArray>?, claimedBitDepth: Int): BitDepthResult {
+    override suspend fun analyze(context: AudioContext): BitDepthResult {
+        val integerWindows = context.integerWindows
+        val claimedBitDepth = context.format.bitDepth
+        
         // If we don't have integer samples, or the file doesn't claim to be 
         // high-resolution (>16-bit), the LSB padding check is not applicable.
         if (integerWindows == null || integerWindows.isEmpty() || claimedBitDepth <= 16) {

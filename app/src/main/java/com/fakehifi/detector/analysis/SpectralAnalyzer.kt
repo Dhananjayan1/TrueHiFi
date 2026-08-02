@@ -16,14 +16,17 @@ data class SpectralResult(
     val slopeBonus: Int = 0,
     val consistencyPenalty: Int = 0,
     val sampleSizePenalty: Int = 0
-)
+) : ComponentResult
 
-object SpectralAnalyzer {
+object SpectralAnalyzer : AudioAnalyzerComponent {
 
     private const val FFT_SIZE = 16384 // ~2.7 Hz resolution at 44.1kHz
     private const val PLOT_POINTS = 220
 
-    fun analyze(windows: List<FloatArray>, sampleRateHz: Int): SpectralResult {
+    override suspend fun analyze(context: AudioContext): SpectralResult {
+        val windows = context.windows
+        val sampleRateHz = context.format.sampleRateHz
+        
         val usable = windows.filter { it.size >= FFT_SIZE }
         if (usable.isEmpty() || sampleRateHz <= 0) return SpectralResult(0, 0, 0.0, 0.0, emptyList(), emptyList())
 

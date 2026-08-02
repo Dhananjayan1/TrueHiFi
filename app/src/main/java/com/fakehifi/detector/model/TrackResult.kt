@@ -1,5 +1,6 @@
 package com.fakehifi.detector.model
 
+import com.fakehifi.detector.analysis.ComponentResult
 import com.fakehifi.detector.analysis.QualityResult
 import com.fakehifi.detector.analysis.StereoResult
 
@@ -27,7 +28,7 @@ data class BitDepthResult(
     val checked: Boolean,
     val looksPadded: Boolean,
     val zeroLowBytePercent: Int
-)
+) : ComponentResult
 
 data class ConfidenceContribution(
     val label: String,

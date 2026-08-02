@@ -8,14 +8,17 @@ data class StereoResult(
     val hasJointStereoCollapse: Boolean,
     val sideToMidHighFreqRatio: Double,
     val confidencePenalty: Int
-)
+) : ComponentResult
 
-object StereoAnalyzer {
+object StereoAnalyzer : AudioAnalyzerComponent {
 
     private const val FFT_SIZE = 16384
     private const val HIGH_FREQ_START_HZ = 16000
 
-    fun analyze(stereoWindows: List<StereoWindow>?, sampleRateHz: Int): StereoResult {
+    override suspend fun analyze(context: AudioContext): StereoResult {
+        val stereoWindows = context.stereoWindows
+        val sampleRateHz = context.format.sampleRateHz
+        
         if (stereoWindows == null || stereoWindows.isEmpty() || sampleRateHz <= 0) {
             return StereoResult(false, 1.0, 0)
         }

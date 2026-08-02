@@ -9,14 +9,17 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="973976f8-71dc-4526-a11d-4ca27717a558" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/repository/UserPreferencesRepository.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/ui/OnboardingScreen.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/worker/ScanWorker.kt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/res/drawable/ic_logo_foreground.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/app/src/main/res/values/colors.xml" afterDir="false" />
+    <list default="true" id="973976f8-71dc-4526-a11d-4ca27717a558" name="Changes" comment="Refactored audio analyzer and detector engine">
+      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/AudioAnalyzer.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/DetectorEngine.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/BitDepthAnalyzer.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/BitDepthAnalyzer.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/FakeDetector.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/FakeDetector.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/QualityAnalyzer.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/QualityAnalyzer.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/SpectralAnalyzer.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/SpectralAnalyzer.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/StereoAnalyzer.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/StereoAnalyzer.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/model/TrackResult.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/model/TrackResult.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/worker/ScanWorker.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/worker/ScanWorker.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -26,7 +29,7 @@
   <component name="ClangdSettings">
     <option name="formatViaClangd" value="false" />
   </component>
-  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[]" />
+  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[PhysicalDevice::serial=10BF1Z1G95002H9]" />
   <component name="ExternalProjectsData">
     <projectState path="$PROJECT_DIR$">
       <ProjectState />
@@ -169,7 +172,21 @@
       <option name="presentableId" value="Default" />
       <updated>1785583907876</updated>
     </task>
+    <task id="LOCAL-00001" summary="Initial commit: Uploading TrueHiFi project files">
+      <option name="closed" value="true" />
+      <created>1785672178434</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1785672178434</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="Initial commit: Uploading TrueHiFi project files" />
+    <MESSAGE value="Refactored audio analyzer and detector engine" />
+    <option name="LAST_COMMIT_MESSAGE" value="Refactored audio analyzer and detector engine" />
   </component>
   <component name="play_dynamic_filters_status">
     <option name="appIdToCheckInfo">

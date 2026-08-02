@@ -19,6 +19,7 @@ object FakeDetector {
         spectral: SpectralResult,
         bitDepthResult: BitDepthResult?,
         stereoResult: StereoResult? = null,
+        qualityResult: QualityResult? = null,
         isDeepScan: Boolean
     ): TrackResult {
         val sampleRateHz = format.sampleRateHz
@@ -189,7 +190,7 @@ object FakeDetector {
             verdict = verdict,
             reason = reason,
             bitDepthResult = bitDepthResult,
-            qualityResult = null, // Will be set by service
+            qualityResult = qualityResult,
             originalBitrateKbps = if (verdict == Verdict.FAKE || verdict == Verdict.SUSPICIOUS) estimatedBitrate else 0,
             isDeepScan = isDeepScan,
             spectrumDb = spectral.spectrumDb,
