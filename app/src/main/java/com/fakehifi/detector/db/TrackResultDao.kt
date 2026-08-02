@@ -18,6 +18,9 @@ interface TrackResultDao {
     @Query("SELECT * FROM track_results ORDER BY dateAdded DESC")
     fun observeAllByLatest(): Flow<List<TrackResultEntity>>
 
+    @Query("SELECT * FROM track_results ORDER BY CASE verdict WHEN 'FAKE' THEN 0 WHEN 'SUSPICIOUS' THEN 1 WHEN 'GENUINE' THEN 2 ELSE 3 END ASC, title ASC")
+    fun observeAllByVerdict(): Flow<List<TrackResultEntity>>
+
     @Query("SELECT * FROM track_results")
     suspend fun getAll(): List<TrackResultEntity>
 

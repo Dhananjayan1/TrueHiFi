@@ -384,6 +384,11 @@ fun MainScreen(
                                     leadingIcon = { if (uiState.sortOrder == SortOrder.TITLE_A_TO_Z) Icon(Icons.Default.Check, null) },
                                     onClick = { showSortMenu = false; viewModel.setSortOrder(SortOrder.TITLE_A_TO_Z) }
                                 )
+                                DropdownMenuItem(
+                                    text = { Text("Verdict (Fakes first)") },
+                                    leadingIcon = { if (uiState.sortOrder == SortOrder.VERDICT) Icon(Icons.Default.Check, null) },
+                                    onClick = { showSortMenu = false; viewModel.setSortOrder(SortOrder.VERDICT) }
+                                )
                             }
                         }
                     }

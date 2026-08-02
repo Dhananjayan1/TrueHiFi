@@ -44,6 +44,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             when (order) {
                 SortOrder.TITLE_A_TO_Z -> db.trackResultDao().observeAllByTitle()
                 SortOrder.LATEST_FIRST -> db.trackResultDao().observeAllByLatest()
+                SortOrder.VERDICT -> db.trackResultDao().observeAllByVerdict()
             }
         }
     ) { repoState, dbResults ->
