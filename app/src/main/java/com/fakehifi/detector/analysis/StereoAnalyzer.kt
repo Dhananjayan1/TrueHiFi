@@ -1,7 +1,5 @@
 package com.fakehifi.detector.analysis
 
-import kotlin.math.log10
-import kotlin.math.max
 import kotlin.math.sqrt
 
 data class StereoResult(

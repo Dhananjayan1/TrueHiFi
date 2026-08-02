@@ -13,7 +13,6 @@ data class TrackInfo(
     val title: String,
     val artist: String,
     val filePath: String,
-    val mimeType: String,
     val sizeBytes: Long,
     val dateModifiedSec: Long,
     val durationMs: Long

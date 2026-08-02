@@ -54,7 +54,6 @@ object MusicScanner {
                         title = cursor.getString(titleCol) ?: "Unknown",
                         artist = cursor.getString(artistCol) ?: "Unknown",
                         filePath = cursor.getString(dataCol) ?: "",
-                        mimeType = mime,
                         sizeBytes = cursor.getLong(sizeCol),
                         dateModifiedSec = cursor.getLong(dateModCol),
                         durationMs = cursor.getLong(durCol)

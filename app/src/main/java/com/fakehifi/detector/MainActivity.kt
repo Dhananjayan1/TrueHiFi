@@ -12,7 +12,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -23,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -31,8 +31,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavType
@@ -71,7 +72,7 @@ class MainActivity : ComponentActivity() {
             val hasCompletedOnboarding by userPreferencesRepository.hasCompletedOnboarding.collectAsState(initial = null)
 
             TrueHiFiTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     if (hasCompletedOnboarding != null) {
                         AppNavHost(
                             viewModel = viewModel,
@@ -287,100 +288,137 @@ fun MainScreen(
             }
         }
     ) { padding ->
-        Column(modifier = Modifier.padding(padding).fillMaxSize().padding(horizontal = 16.dp)) {
-            if (uiState.isScanning) {
-                Spacer(Modifier.height(8.dp))
-                val progress = if (uiState.totalTracks > 0)
-                    uiState.scannedTracks / uiState.totalTracks.toFloat() else 0f
-                LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+        if (uiState.results.isEmpty() && !uiState.isScanning) {
+            BeginnersGuide(padding)
+        } else {
+            Column(modifier = Modifier.padding(padding).fillMaxSize().padding(horizontal = 16.dp)) {
+                if (uiState.isScanning) {
+                    Spacer(Modifier.height(8.dp))
+                    val progress = if (uiState.totalTracks > 0)
+                        uiState.scannedTracks / uiState.totalTracks.toFloat() else 0f
+                    LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${uiState.scannedTracks}/${uiState.totalTracks} — ${uiState.currentTitle}",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { viewModel.cancelScan() }) {
+                            Text("Cancel")
+                        }
+                    }
                     Text(
-                        "${uiState.scannedTracks}/${uiState.totalTracks} — ${uiState.currentTitle}",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.weight(1f)
+                        "Scan keeps running even if you leave the app — check the notification.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    TextButton(onClick = { viewModel.cancelScan() }) {
-                        Text("Cancel")
-                    }
                 }
-                Text(
-                    "Scan keeps running even if you leave the app — check the notification.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
 
-            if (uiState.results.isNotEmpty()) {
-                Spacer(Modifier.height(16.dp))
-                
-                OutlinedTextField(
-                    value = uiState.searchQuery,
-                    onValueChange = { viewModel.setSearchQuery(it) },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Search tracks, artists, or filenames...") },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    singleLine = true
-                )
-                
-                Spacer(Modifier.height(8.dp))
-
-                val fakeCount = uiState.results.count { it.verdict == Verdict.FAKE }
-                val suspiciousCount = uiState.results.count { it.verdict == Verdict.SUSPICIOUS }
-                Text(
-                    "${uiState.results.size} lossless/hi-res files — $fakeCount fake, $suspiciousCount suspicious",
-                    style = MaterialTheme.typography.titleSmall
-                )
-                Spacer(Modifier.height(8.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilterChipsRow(
-                        selected = uiState.filter,
-                        onSelect = { viewModel.setFilter(it) },
-                        modifier = Modifier.weight(1f)
+                if (uiState.results.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    
+                    OutlinedTextField(
+                        value = uiState.searchQuery,
+                        onValueChange = { viewModel.setSearchQuery(it) },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Search tracks, artists, or filenames...") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        singleLine = true
                     )
-                    Box {
-                        IconButton(onClick = { showSortMenu = true }) {
-                            Icon(Icons.Filled.Sort, contentDescription = "Sort")
-                        }
-                        DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                            DropdownMenuItem(text = { Text("By verdict") }, onClick = {
-                                showSortMenu = false; viewModel.setSortOrder(SortOrder.VERDICT)
-                            })
-                            DropdownMenuItem(text = { Text("By name") }, onClick = {
-                                showSortMenu = false; viewModel.setSortOrder(SortOrder.NAME)
-                            })
-                            DropdownMenuItem(text = { Text("By confidence") }, onClick = {
-                                showSortMenu = false; viewModel.setSortOrder(SortOrder.CONFIDENCE)
-                            })
-                        }
-                    }
-                }
-            }
+                    
+                    Spacer(Modifier.height(8.dp))
 
-            Spacer(Modifier.height(8.dp))
+                    val fakeCount = uiState.results.count { it.verdict == Verdict.FAKE }
+                    val suspiciousCount = uiState.results.count { it.verdict == Verdict.SUSPICIOUS }
+                    Text(
+                        "${uiState.results.size} lossless/hi-res files — $fakeCount fake, $suspiciousCount suspicious",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Spacer(Modifier.height(8.dp))
 
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                items(uiState.visibleResults, key = { it.track.filePath }) { result ->
-                    TrackRow(
-                        result = result,
-                        isSelected = uiState.selectedUris.contains(result.track.uri),
-                        isSelectionMode = uiState.isSelectionMode,
-                        onClick = {
-                            if (uiState.isSelectionMode) {
-                                viewModel.toggleSelection(result.track.uri)
-                            } else {
-                                onTrackClick(result.track)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        FilterChipsRow(
+                            selected = uiState.filter,
+                            onSelect = { viewModel.setFilter(it) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        Box {
+                            IconButton(onClick = { showSortMenu = true }) {
+                                Icon(Icons.Filled.Sort, contentDescription = "Sort")
                             }
-                        },
-                        onLongClick = {
-                            viewModel.toggleSelection(result.track.uri)
+                            DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+                                DropdownMenuItem(text = { Text("By verdict") }, onClick = {
+                                    showSortMenu = false; viewModel.setSortOrder(SortOrder.VERDICT)
+                                })
+                                DropdownMenuItem(text = { Text("By name") }, onClick = {
+                                    showSortMenu = false; viewModel.setSortOrder(SortOrder.NAME)
+                                })
+                                DropdownMenuItem(text = { Text("By confidence") }, onClick = {
+                                    showSortMenu = false; viewModel.setSortOrder(SortOrder.CONFIDENCE)
+                                })
+                            }
                         }
-                    )
-                    HorizontalDivider()
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    items(uiState.visibleResults, key = { it.track.filePath }) { result ->
+                        TrackRow(
+                            result = result,
+                            isSelected = uiState.selectedUris.contains(result.track.uri),
+                            isSelectionMode = uiState.isSelectionMode,
+                            onClick = {
+                                if (uiState.isSelectionMode) {
+                                    viewModel.toggleSelection(result.track.uri)
+                                } else {
+                                    onTrackClick(result.track)
+                                }
+                            },
+                            onLongClick = {
+                                viewModel.toggleSelection(result.track.uri)
+                            }
+                        )
+                        HorizontalDivider()
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun BeginnersGuide(padding: PaddingValues) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.LibraryMusic,
+            contentDescription = null,
+            modifier = Modifier.size(100.dp).clip(CircleShape),
+            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+        )
+        Spacer(Modifier.height(32.dp))
+        Text(
+            text = "Welcome to TrueHiFi",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = "Your library has not been scanned yet. Tap 'Scan Library' below to detect upscaled fakes and lossy compression in your lossless files.",
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

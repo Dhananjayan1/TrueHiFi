@@ -22,7 +22,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -48,7 +47,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         // so previous scan results aren't lost until the user rescans.
         viewModelScope.launch {
             if (ScanRepository.uiState.value.results.isEmpty()) {
-                val cached = withContext(Dispatchers.IO) { db.trackResultDao().observeAll().first() }
+                val cached = withContext(Dispatchers.IO) { db.trackResultDao().getAll() }
                 if (cached.isNotEmpty()) {
                     ScanRepository.update { it.copy(results = cached.map { entity -> entity.toTrackResult() }) }
                 }
@@ -142,20 +141,6 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun createDeleteFakeRequest(): PendingIntent? {
-        val uris = uiState.value.results
-            .filter { it.verdict == Verdict.FAKE }
-            .map { it.track.uri }
-        return createDeleteRequest(uris)
-    }
-
-    fun createDeleteSuspiciousRequest(): PendingIntent? {
-        val uris = uiState.value.results
-            .filter { it.verdict == Verdict.SUSPICIOUS }
-            .map { it.track.uri }
-        return createDeleteRequest(uris)
-    }
-
     fun onTracksDeleted(deletedUris: List<String>) {
         viewModelScope.launch(Dispatchers.IO) {
             val contentResolver = getApplication<Application>().contentResolver
@@ -194,13 +179,5 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
-    }
-
-    // Legacy method for compatibility if needed, but we should use the one above
-    fun onTracksDeleted() {
-        val fakeUris = uiState.value.results
-            .filter { it.verdict == Verdict.FAKE }
-            .map { it.track.uri }
-        onTracksDeleted(fakeUris)
     }
 }

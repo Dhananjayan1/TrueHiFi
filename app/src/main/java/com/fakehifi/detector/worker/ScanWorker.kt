@@ -12,17 +12,12 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.ListenableWorker.Result as WorkResult
-import com.fakehifi.detector.analysis.AudioAnalyzerComponent
 import com.fakehifi.detector.analysis.AudioContext
 import com.fakehifi.detector.analysis.AudioDecoder
-import com.fakehifi.detector.analysis.BitDepthAnalyzer
 import com.fakehifi.detector.analysis.DecodedFormat
 import com.fakehifi.detector.analysis.DetectorEngine
 import com.fakehifi.detector.analysis.FakeDetector
-import com.fakehifi.detector.analysis.QualityAnalyzer
-import com.fakehifi.detector.analysis.SpectralAnalyzer
 import com.fakehifi.detector.analysis.SpectralResult
-import com.fakehifi.detector.analysis.StereoAnalyzer
 import com.fakehifi.detector.db.AppDatabase
 import com.fakehifi.detector.db.TrackResultEntity
 import com.fakehifi.detector.model.TrackInfo

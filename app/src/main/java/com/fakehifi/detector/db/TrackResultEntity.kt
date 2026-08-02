@@ -21,7 +21,6 @@ data class TrackResultEntity(
     val uri: String,
     val title: String,
     val artist: String,
-    val mimeType: String,
     val sizeBytes: Long,
     val dateModifiedSec: Long,
     val durationMs: Long,
@@ -43,6 +42,7 @@ data class TrackResultEntity(
     // Stereo metrics
     val hasJointStereoCollapse: Boolean = false,
     val sideToMidHighFreqRatio: Double = 1.0,
+    val stereoConfidencePenalty: Int = 0,
     val originalBitrateKbps: Int = 0,
     val isDeepScan: Boolean,
     val spectrumDbCsv: String, // comma-separated, downsampled magnitude-in-dB values
@@ -50,7 +50,7 @@ data class TrackResultEntity(
     val spectrumBinHz: Double
 ) {
     fun toTrackResult(): TrackResult = TrackResult(
-        track = TrackInfo(uri, title, artist, filePath, mimeType, sizeBytes, dateModifiedSec, durationMs),
+        track = TrackInfo(uri, title, artist, filePath, sizeBytes, dateModifiedSec, durationMs),
         sampleRateHz = sampleRateHz,
         bitDepth = bitDepth,
         detectedCutoffHz = detectedCutoffHz,
@@ -59,7 +59,7 @@ data class TrackResultEntity(
         reason = reason,
         bitDepthResult = BitDepthResult(bitDepthChecked, bitDepthLooksPadded, bitDepthZeroLowBytePercent),
         qualityResult = QualityResult(peakDb, rmsDb, dynamicRange, clippedSamplesCount, maxConsecutiveClipped),
-        stereoResult = StereoResult(hasJointStereoCollapse, sideToMidHighFreqRatio, 0),
+        stereoResult = StereoResult(hasJointStereoCollapse, sideToMidHighFreqRatio, stereoConfidencePenalty),
         originalBitrateKbps = originalBitrateKbps,
         isDeepScan = isDeepScan,
         spectrumDb = if (spectrumDbCsv.isBlank()) emptyList()
@@ -77,7 +77,6 @@ data class TrackResultEntity(
             uri = result.track.uri,
             title = result.track.title,
             artist = result.track.artist,
-            mimeType = result.track.mimeType,
             sizeBytes = result.track.sizeBytes,
             dateModifiedSec = result.track.dateModifiedSec,
             durationMs = result.track.durationMs,
@@ -97,6 +96,7 @@ data class TrackResultEntity(
             maxConsecutiveClipped = result.qualityResult?.maxConsecutiveClipped ?: 0,
             hasJointStereoCollapse = result.stereoResult?.hasJointStereoCollapse ?: false,
             sideToMidHighFreqRatio = result.stereoResult?.sideToMidHighFreqRatio ?: 1.0,
+            stereoConfidencePenalty = result.stereoResult?.confidencePenalty ?: 0,
             originalBitrateKbps = result.originalBitrateKbps,
             isDeepScan = result.isDeepScan,
             spectrumDbCsv = result.spectrumDb.joinToString(",") { "%.1f".format(it) },

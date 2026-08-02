@@ -12,6 +12,9 @@ interface TrackResultDao {
     @Query("SELECT * FROM track_results")
     fun observeAll(): Flow<List<TrackResultEntity>>
 
+    @Query("SELECT * FROM track_results")
+    suspend fun getAll(): List<TrackResultEntity>
+
     @Query("SELECT * FROM track_results WHERE filePath = :filePath LIMIT 1")
     suspend fun findByPath(filePath: String): TrackResultEntity?
 

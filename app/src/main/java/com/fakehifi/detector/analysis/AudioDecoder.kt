@@ -12,11 +12,9 @@ import java.nio.ByteOrder
 
 data class DecodedFormat(
     val sampleRateHz: Int,
-    val channelCount: Int,
     val bitDepth: Int,
     val declaredBitDepth: Int = 0,
-    val declaredSampleRateHz: Int = 0,
-    val declaredCodec: String = ""
+    val declaredSampleRateHz: Int = 0
 )
 
 data class StereoWindow(
@@ -28,8 +26,7 @@ data class DecodeResult(
     val format: DecodedFormat,
     val windows: List<FloatArray>, // mono/left channel for standard analysis
     val integerWindows: List<IntArray>?, // original un-normalized integer PCM, for LSB audit
-    val stereoWindows: List<StereoWindow>?, // separate channels for Mid/Side analysis
-    val isHighPrecision: Boolean   // true if the decoder actually gave us float PCM, not just 16-bit
+    val stereoWindows: List<StereoWindow>? // separate channels for Mid/Side analysis
 )
 
 object AudioDecoder {
@@ -75,7 +72,6 @@ object AudioDecoder {
                 sampleRate
             }
             val declaredBitDepth = guessBitDepth(format) // Metadata doesn't always have a direct bit-depth key
-            val declaredCodec = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE) ?: ""
 
             val mime = format.getString(MediaFormat.KEY_MIME) ?: return null
 
@@ -150,16 +146,13 @@ object AudioDecoder {
             return DecodeResult(
                 DecodedFormat(
                     sampleRateHz = sampleRate,
-                    channelCount = channelCount,
                     bitDepth = sourceBitDepth,
                     declaredBitDepth = declaredBitDepth,
-                    declaredSampleRateHz = declaredSampleRate,
-                    declaredCodec = declaredCodec
+                    declaredSampleRateHz = declaredSampleRate
                 ),
                 windows,
                 integerWindows,
-                stereoWindows,
-                isHighPrecision = achievedFloat
+                stereoWindows
             )
         } catch (e: Exception) {
             return null
