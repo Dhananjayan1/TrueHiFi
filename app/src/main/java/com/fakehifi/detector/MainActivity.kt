@@ -188,6 +188,10 @@ fun MainScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     
+    val visibleResults by remember {
+        derivedStateOf { uiState.visibleResults }
+    }
+
     val permissions = remember {
         buildList {
             add(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -397,7 +401,7 @@ fun MainScreen(
                 Spacer(Modifier.height(8.dp))
 
                 LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(uiState.visibleResults, key = { it.track.filePath }) { result ->
+                    items(visibleResults, key = { it.track.filePath }) { result ->
                         TrackRow(
                             result = result,
                             isSelected = uiState.selectedUris.contains(result.track.uri),

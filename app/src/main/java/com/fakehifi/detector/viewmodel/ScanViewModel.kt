@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
@@ -48,12 +49,15 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     ) { repoState, dbResults ->
-        repoState.copy(
-            results = dbResults.map { it.toTrackResult() },
-            sortOrder = _sortOrder.value
-        )
+        // Perform mapping on Dispatchers.Default to keep UI thread smooth
+        withContext(Dispatchers.Default) {
+            repoState.copy(
+                results = dbResults.map { it.toTrackResult() },
+                sortOrder = _sortOrder.value
+            )
+        }
     }
-    .sample(500L)
+    .conflate() // Ensure we don't build up a backlog of states
     .stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),

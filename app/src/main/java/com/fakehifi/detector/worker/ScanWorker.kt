@@ -60,38 +60,36 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             it.copy(isScanning = true, totalTracks = tracks.size, scannedTracks = 0, results = emptyList())
         }
 
-        val results = mutableListOf<TrackResult>()
+        var lastUpdateMs = 0L
         for ((index, track) in tracks.withIndex()) {
-            if (isStopped) break
+            kotlinx.coroutines.yield()
             
-            ScanRepository.update { it.copy(currentTitle = track.title) }
-            updateForeground("${index + 1}/${tracks.size} — ${track.title}", index + 1, tracks.size)
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastUpdateMs > 100) {
+                ScanRepository.update { it.copy(currentTitle = track.title, scannedTracks = index) }
+                updateForeground("${index + 1}/${tracks.size} — ${track.title}", index + 1, tracks.size)
+                lastUpdateMs = currentTime
+            }
 
             val cached = withContext(Dispatchers.IO) { db.trackResultDao().findByPath(track.filePath) }
-            val result = if (cached != null &&
+            if (cached != null &&
                 cached.sizeBytes == track.sizeBytes &&
                 cached.dateAdded == track.dateAdded
             ) {
-                cached.toTrackResult()
+                // Already cached
             } else {
                 val fresh = analyzeTrack(track, deep = false)
                 withContext(Dispatchers.IO) {
                     db.trackResultDao().upsert(TrackResultEntity.fromTrackResult(fresh))
                 }
-                fresh
             }
 
-            results.add(result)
-            // Batch updates to the repository results list to avoid O(N^2) copies on every track.
-            // Progress count and title still emit instantly for the notification.
-            if ((index + 1) % 10 == 0 || index == tracks.size - 1) {
-                ScanRepository.update { it.copy(scannedTracks = index + 1, results = results.toList()) }
-            } else {
-                ScanRepository.update { it.copy(scannedTracks = index + 1) }
-            }
+            // During full scan, we don't push the entire 'results' list to the repository
+            // on every track. The UI observes the database flow for the list.
+            // We only update the progress markers.
         }
 
-        ScanRepository.update { it.copy(isScanning = false, currentTitle = "") }
+        ScanRepository.update { it.copy(isScanning = false, currentTitle = "", scannedTracks = tracks.size) }
     }
 
     private suspend fun startDeepScan(uriString: String) {

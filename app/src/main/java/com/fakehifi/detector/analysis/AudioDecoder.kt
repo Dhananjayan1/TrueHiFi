@@ -43,12 +43,12 @@ object AudioDecoder {
      * larger windowCount (see DEEP_SCAN_WINDOW_COUNT) for a slower, more
      * thorough re-check of a single file.
      */
-    fun decodeSampleWindows(
+    suspend fun decodeSampleWindows(
         context: Context,
         uri: Uri,
         windowCount: Int = QUICK_SCAN_WINDOW_COUNT,
         windowDurationMs: Long = QUICK_SCAN_WINDOW_MS
-    ): DecodeResult? {
+    ): DecodeResult? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
         val extractor = MediaExtractor()
         val retriever = MediaMetadataRetriever()
         var codec: MediaCodec? = null
@@ -56,7 +56,7 @@ object AudioDecoder {
             extractor.setDataSource(context, uri, null)
             retriever.setDataSource(context, uri)
 
-            val trackIndex = selectAudioTrack(extractor) ?: return null
+            val trackIndex = selectAudioTrack(extractor) ?: return@withContext null
             val format = extractor.getTrackFormat(trackIndex)
             extractor.selectTrack(trackIndex)
 
@@ -73,7 +73,7 @@ object AudioDecoder {
             }
             val declaredBitDepth = guessBitDepth(format) // Metadata doesn't always have a direct bit-depth key
 
-            val mime = format.getString(MediaFormat.KEY_MIME) ?: return null
+            val mime = format.getString(MediaFormat.KEY_MIME) ?: return@withContext null
 
             val activeCodec = MediaCodec.createDecoderByType(mime)
             codec = activeCodec
@@ -130,6 +130,7 @@ object AudioDecoder {
             val positions = evenlySpacedPositions(safeDurationUs, windowCount, windowDurationMs * 1000)
 
             for (startUs in positions) {
+                kotlinx.coroutines.yield()
                 extractor.seekTo(startUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
                 activeCodec.flush()
                 val result = decodeOneWindow(
@@ -142,8 +143,8 @@ object AudioDecoder {
                 }
             }
 
-            if (windows.isEmpty()) return null
-            return DecodeResult(
+            if (windows.isEmpty()) return@withContext null
+            DecodeResult(
                 DecodedFormat(
                     sampleRateHz = sampleRate,
                     bitDepth = sourceBitDepth,
@@ -155,7 +156,7 @@ object AudioDecoder {
                 stereoWindows
             )
         } catch (e: Exception) {
-            return null
+            return@withContext null
         } finally {
             try { codec?.stop() } catch (_: Exception) {}
             try { codec?.release() } catch (_: Exception) {}
@@ -204,7 +205,7 @@ object AudioDecoder {
         return (0 until count).map { start + it * step }
     }
 
-    private fun decodeOneWindow(
+    private suspend fun decodeOneWindow(
         extractor: MediaExtractor,
         codec: MediaCodec,
         channelCount: Int,
@@ -224,6 +225,7 @@ object AudioDecoder {
         var safetyCounter = 0
 
         while (!sawOutputEOS && outMono.size < targetSampleCount && safetyCounter < 500) {
+            kotlinx.coroutines.yield()
             safetyCounter++
             if (!sawInputEOS) {
                 val inIndex = codec.dequeueInputBuffer(TIMEOUT_US)
