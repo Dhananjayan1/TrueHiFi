@@ -9,17 +9,11 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="973976f8-71dc-4526-a11d-4ca27717a558" name="Changes" comment="Refactored audio analyzer and detector engine">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    <list default="true" id="973976f8-71dc-4526-a11d-4ca27717a558" name="Changes" comment=" implemented the Sort by Latest feature">
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/MainActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/MainActivity.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/FakeDetector.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/FakeDetector.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/SpectralAnalyzer.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/SpectralAnalyzer.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/db/TrackResultDao.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/db/TrackResultDao.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/model/ScanUiState.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/model/ScanUiState.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/model/TrackResult.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/model/TrackResult.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/ui/DetailScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/ui/DetailScreen.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/viewmodel/ScanViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/viewmodel/ScanViewModel.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/worker/ScanWorker.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/worker/ScanWorker.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -236,13 +230,22 @@
       <option name="project" value="LOCAL" />
       <updated>1785676594291</updated>
     </task>
-    <option name="localTasksCounter" value="9" />
+    <task id="LOCAL-00009" summary=" implemented the Sort by Latest feature">
+      <option name="closed" value="true" />
+      <created>1785678614227</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1785678614228</updated>
+    </task>
+    <option name="localTasksCounter" value="10" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Initial commit: Uploading TrueHiFi project files" />
     <MESSAGE value="Refactored audio analyzer and detector engine" />
-    <option name="LAST_COMMIT_MESSAGE" value="Refactored audio analyzer and detector engine" />
+    <MESSAGE value=" implemented the Sort by Latest feature" />
+    <option name="LAST_COMMIT_MESSAGE" value=" implemented the Sort by Latest feature" />
   </component>
   <component name="play_dynamic_filters_status">
     <option name="appIdToCheckInfo">
