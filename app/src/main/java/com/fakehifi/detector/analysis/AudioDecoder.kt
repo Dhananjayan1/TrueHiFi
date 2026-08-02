@@ -84,17 +84,41 @@ object AudioDecoder {
             activeCodec.configure(format, null, null, 0)
             activeCodec.start()
 
-            // After start, wait for output format to see what the hardware decoder REALLY outputs
-            val outputFormat = activeCodec.outputFormat
-            val encoding = try {
-                outputFormat.getInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
-            } catch (e: Exception) {
-                AudioFormat.ENCODING_PCM_16BIT
-            }
-            val achievedFloat = encoding == AudioFormat.ENCODING_PCM_FLOAT
+            // Pre-roll: Some codecs don't provide a definitive output format until they've 
+            // processed some input. We'll feed it a few buffers until we get the real format info.
+            var definitiveEncoding = AudioFormat.ENCODING_PCM_16BIT
+            val dummyBufferInfo = MediaCodec.BufferInfo()
+            var formatFound = false
+            var attempts = 0
             
+            while (!formatFound && attempts < 20) {
+                val inIndex = activeCodec.dequeueInputBuffer(TIMEOUT_US)
+                if (inIndex >= 0) {
+                    val inBuffer = activeCodec.getInputBuffer(inIndex)
+                    val sampleSize = inBuffer?.let { extractor.readSampleData(it, 0) } ?: -1
+                    if (sampleSize < 0) {
+                        activeCodec.queueInputBuffer(inIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                    } else {
+                        activeCodec.queueInputBuffer(inIndex, 0, sampleSize, extractor.sampleTime, 0)
+                        extractor.advance()
+                    }
+                }
+                
+                val outIndex = activeCodec.dequeueOutputBuffer(dummyBufferInfo, TIMEOUT_US)
+                if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    definitiveEncoding = activeCodec.outputFormat.getInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
+                    formatFound = true
+                } else if (outIndex >= 0) {
+                    definitiveEncoding = activeCodec.getOutputFormat(outIndex).getInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
+                    activeCodec.releaseOutputBuffer(outIndex, false)
+                    formatFound = true
+                }
+                attempts++
+            }
+
             // Map the physical encoding to a bit-depth number for analysis
-            val sourceBitDepth = when (encoding) {
+            val achievedFloat = definitiveEncoding == AudioFormat.ENCODING_PCM_FLOAT
+            val sourceBitDepth = when (definitiveEncoding) {
                 AudioFormat.ENCODING_PCM_FLOAT -> 24 // effectively 24 or 32
                 AudioFormat.ENCODING_PCM_16BIT -> 16
                 AudioFormat.ENCODING_PCM_8BIT -> 8
