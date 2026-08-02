@@ -2,6 +2,7 @@ package com.fakehifi.detector
 
 import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -22,6 +23,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
@@ -32,9 +35,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -109,7 +114,7 @@ fun AppNavHost(
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
-        if (result[permissions[0]] == true) {
+        if (result.values.all { it }) {
             onOnboardingComplete()
             navController.navigate("list") {
                 popUpTo("onboarding") { inclusive = true }
@@ -179,12 +184,9 @@ fun MainScreen(
     onDeleteTracks: (List<String>) -> Unit,
     onTrackClick: (TrackInfo) -> Unit
 ) {
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
-    var hasPermission by remember { mutableStateOf(false) }
-    var showOverflowMenu by remember { mutableStateOf(false) }
-    var showSortMenu by remember { mutableStateOf(false) }
-    var showDeleteBatchMenu by remember { mutableStateOf(false) }
-
+    
     val permissions = remember {
         buildList {
             add(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -192,9 +194,28 @@ fun MainScreen(
         }.toTypedArray()
     }
 
+    // Initialize permission state by checking actual system status to avoid "double tap" issue
+    var hasPermission by remember {
+        mutableStateOf(
+            permissions.all {
+                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+            }
+        )
+    }
+    
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
+    var showDeleteBatchMenu by remember { mutableStateOf(false) }
+
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { result -> hasPermission = result[permissions[0]] == true }
+    ) { result ->
+        val granted = result.values.all { it }
+        hasPermission = granted
+        if (granted) {
+            viewModel.startScan()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -279,7 +300,11 @@ fun MainScreen(
             if (!uiState.isSelectionMode) {
                 ExtendedFloatingActionButton(
                     onClick = {
-                        if (!hasPermission) launcher.launch(permissions) else viewModel.startScan()
+                        if (!hasPermission) {
+                            launcher.launch(permissions)
+                        } else {
+                            viewModel.startScan()
+                        }
                     },
                     expanded = !uiState.isScanning,
                     icon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
@@ -417,6 +442,82 @@ fun BeginnersGuide(padding: PaddingValues) {
             text = "Your library has not been scanned yet. Tap 'Scan Library' below to detect upscaled fakes and lossy compression in your lossless files.",
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        
+        Spacer(Modifier.height(32.dp))
+        GlossaryCard()
+    }
+}
+
+@Composable
+fun GlossaryCard() {
+    var expanded by remember { mutableStateOf(false) }
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+        onClick = { expanded = !expanded },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Understanding the Metrics",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Collapse" else "Expand"
+                )
+            }
+            
+            if (expanded) {
+                Spacer(Modifier.height(16.dp))
+                
+                GlossaryItem(
+                    term = "Spectral Slope",
+                    definition = "Measures how sharply high frequencies drop off. A steep brick-wall slope usually indicates a lossy MP3/AAC."
+                )
+                
+                Spacer(Modifier.height(12.dp))
+                
+                GlossaryItem(
+                    term = "Dynamic Range (DR)",
+                    definition = "The difference between the loudest and quietest parts of the track. Higher DR means less compression and better mastering."
+                )
+                
+                Spacer(Modifier.height(12.dp))
+                
+                GlossaryItem(
+                    term = "Cutoff",
+                    definition = "The exact frequency where the audio data abruptly stops."
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun GlossaryItem(term: String, definition: String) {
+    Column {
+        Text(
+            text = term,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = definition,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
