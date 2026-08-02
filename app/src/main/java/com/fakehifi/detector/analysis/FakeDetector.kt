@@ -50,7 +50,7 @@ object FakeDetector {
         val estimatedBitrate = estimateOriginalBitrate(cutoffHz)
 
         // Empirical Bandwidth Targets
-        val targetGenuineHz = if (sampleRateHz <= 48000) 19500 else 24000
+        val targetGenuineHz = if (sampleRateHz <= 48000) 18800 else 24000
 
         val breakdown = mutableListOf<ConfidenceContribution>()
         
@@ -109,7 +109,7 @@ object FakeDetector {
                 }
             }
             // 4. Close to genuine ("Likely Genuine") with natural decay
-            cutoffHz >= targetGenuineHz - 3000 && slope < 15 -> {
+            cutoffHz >= targetGenuineHz - 3000 && slope < 22 -> {
                 verdict = Verdict.GENUINE
                 reason = "Spectrum rolls off gradually at ${cutoffHz / 1000.0}kHz (slope ${slope.toInt()}dB/kHz) — " +
                     "consistent with a high-quality acoustic recording."

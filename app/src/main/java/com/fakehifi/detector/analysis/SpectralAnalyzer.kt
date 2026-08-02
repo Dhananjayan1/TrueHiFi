@@ -63,13 +63,15 @@ object SpectralAnalyzer : AudioAnalyzerComponent {
 
         val binHz = sampleRateHz.toDouble() / FFT_SIZE
         val accumulated = DoubleArray(FFT_SIZE / 2)
-        val perWindowCutoffs = mutableListOf<Int>()
+        val windowMetadata = mutableListOf<Pair<Int, Double>>() // Cutoff, RMS
         val multiSpectrums = mutableListOf<List<Double>>()
 
         for ((window, rmsDb) in representativeWindows) {
             val mag = magnitudeSpectrum(window)
             for (j in mag.indices) accumulated[j] += mag[j]
-            perWindowCutoffs.add(findCutoffHz(mag, binHz, sampleRateHz))
+            
+            val cutoff = findCutoffHz(mag, binHz, sampleRateHz)
+            windowMetadata.add(cutoff to rmsDb)
             
             // Collect individual window spectrums for visualization
             val magDb = DoubleArray(mag.size) { k -> 20 * log10(max(mag[k], 1e-9)) }
@@ -84,12 +86,22 @@ object SpectralAnalyzer : AudioAnalyzerComponent {
 
         val slope = calculateRolloffSlope(avgMagDb, avgCutoffHz, binHz)
 
-        // ... [rest of the confidence logic remains same] ...
-        val meanOfWindowCutoffs = perWindowCutoffs.average()
-        val variance = perWindowCutoffs.sumOf {
-            (it - meanOfWindowCutoffs) * (it - meanOfWindowCutoffs)
-        } / perWindowCutoffs.size
-        val stdDev = sqrt(variance)
+        // Consistency logic refinement:
+        // We only care about consistency among windows that actually have enough signal 
+        // to detect a reliable cutoff. Quiet windows often fail this and shouldn't 
+        // tank the whole file's confidence.
+        val maxRms = windowMetadata.maxOfOrNull { it.second } ?: -100.0
+        val reliableCutoffs = windowMetadata
+            .filter { it.second > maxRms - 40.0 && it.first > 0 }
+            .map { it.first }
+
+        val stdDev = if (reliableCutoffs.size >= 2) {
+            val mean = reliableCutoffs.average()
+            val variance = reliableCutoffs.sumOf { (it - mean) * (it - mean) } / reliableCutoffs.size
+            sqrt(variance)
+        } else {
+            0.0
+        }
 
         val slopeBonus = transitionSteepnessScore(slope)
         val consistencyPenalty = (stdDev / 2000.0 * 40).toInt().coerceIn(0, 40)
@@ -126,15 +138,31 @@ object SpectralAnalyzer : AudioAnalyzerComponent {
     }
 
     private fun magnitudeSpectrum(window: FloatArray): DoubleArray {
+        val numChunks = window.size / FFT_SIZE
+        if (numChunks <= 0) return DoubleArray(FFT_SIZE / 2)
+
+        val accumulated = DoubleArray(FFT_SIZE / 2)
         val real = DoubleArray(FFT_SIZE)
         val imag = DoubleArray(FFT_SIZE)
-        for (i in 0 until FFT_SIZE) {
-            val hann = 0.5 * (1 - kotlin.math.cos(2 * Math.PI * i / (FFT_SIZE - 1)))
-            val sample = if (window[i].isNaN()) 0f else window[i]
-            real[i] = sample * hann
+
+        for (c in 0 until numChunks) {
+            val offset = c * FFT_SIZE
+            for (i in 0 until FFT_SIZE) {
+                val hann = 0.5 * (1 - kotlin.math.cos(2 * Math.PI * i / (FFT_SIZE - 1)))
+                val sample = if (window[offset + i].isNaN()) 0f else window[offset + i]
+                real[i] = sample.toDouble() * hann
+                imag[i] = 0.0
+            }
+            FFT.transform(real, imag)
+            for (i in 0 until FFT_SIZE / 2) {
+                accumulated[i] += sqrt(real[i] * real[i] + imag[i] * imag[i])
+            }
         }
-        FFT.transform(real, imag)
-        return DoubleArray(FFT_SIZE / 2) { i -> sqrt(real[i] * real[i] + imag[i] * imag[i]) }
+
+        for (i in accumulated.indices) {
+            accumulated[i] /= numChunks.toDouble()
+        }
+        return accumulated
     }
 
     private fun findCutoffHz(magnitudeLinear: DoubleArray, binHz: Double, sampleRateHz: Int): Int {
@@ -146,10 +174,10 @@ object SpectralAnalyzer : AudioAnalyzerComponent {
         val analysisStartBin = (4000 / binHz).toInt().coerceIn(0, magDb.size - 1)
         val highBins = magDb.sliceArray(analysisStartBin until magDb.size).sortedArray()
         
-        // Use the 15th percentile as a robust estimate for the noise floor.
+        // Use the 5th percentile as a robust estimate for the noise floor.
         // This rejects peaks (musical content) and focuses on the underlying noise floor.
         val statisticalFloor = if (highBins.isNotEmpty()) {
-            highBins[(highBins.size * 0.15).toInt()]
+            highBins[(highBins.size * 0.05).toInt()]
         } else -100.0
 
         // Band-specific Heuristic (Fallback for validation):
@@ -165,7 +193,7 @@ object SpectralAnalyzer : AudioAnalyzerComponent {
 
         // Establish the definitive noise floor with a safety margin.
         // We take the higher of the two (more conservative) to avoid false cutoff detections.
-        val noiseFloorDb = max(statisticalFloor, heuristicFloor) + 15.0
+        val noiseFloorDb = max(statisticalFloor, heuristicFloor) + 10.0
 
         val sortedMag = magDb.sortedArray()
         val quartileSize = (sortedMag.size * 0.25).toInt().coerceAtLeast(1)
@@ -178,9 +206,9 @@ object SpectralAnalyzer : AudioAnalyzerComponent {
         val midEnd = (4000 / binHz).toInt().coerceIn(0, magDb.size)
 
         // Bandwidth-Based Signal Detection
-        // Instead of hardcoded bin counts, we require a physical bandwidth of 50 Hz.
+        // Instead of hardcoded bin counts, we require a physical bandwidth of 30 Hz.
         // This ensures the detection logic is independent of the FFT size.
-        val requiredConsecutiveBins = ceil(50.0 / binHz).toInt().coerceAtLeast(1)
+        val requiredConsecutiveBins = ceil(30.0 / binHz).toInt().coerceAtLeast(1)
         val windowBins = requiredConsecutiveBins
         var cutoffBin = 0
         

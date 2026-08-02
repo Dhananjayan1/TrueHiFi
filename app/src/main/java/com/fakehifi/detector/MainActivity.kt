@@ -161,10 +161,12 @@ fun AppNavHost(
         ) { backStackEntry ->
             val encodedUri = backStackEntry.arguments?.getString("uri") ?: return@composable
             val uri = URLDecoder.decode(encodedUri, "UTF-8")
-            val result = uiState.results.find { it.track.uri == uri }
-            if (result != null) {
+            
+            val fullResult by remember(uri) { viewModel.observeFullResult(uri) }.collectAsState()
+
+            if (fullResult != null) {
                 DetailScreen(
-                    result = result,
+                    result = fullResult!!,
                     isScanning = uiState.isScanning,
                     onBack = { navController.popBackStack() },
                     onDeepScan = { viewModel.startDeepScan(uri) },
@@ -173,6 +175,10 @@ fun AppNavHost(
                         navController.popBackStack()
                     }
                 )
+            } else {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
             }
         }
     }
@@ -188,10 +194,6 @@ fun MainScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     
-    val visibleResults by remember {
-        derivedStateOf { uiState.visibleResults }
-    }
-
     val permissions = remember {
         buildList {
             add(if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -245,11 +247,13 @@ fun MainScreen(
                             Icon(Icons.Filled.Delete, contentDescription = "Delete Selected", tint = MaterialTheme.colorScheme.error)
                         }
                     } else {
-                        val canDelete = when (uiState.filter) {
-                            ResultFilter.FAKE -> uiState.results.any { it.verdict == Verdict.FAKE }
-                            ResultFilter.SUSPICIOUS -> uiState.results.any { it.verdict == Verdict.SUSPICIOUS }
-                            ResultFilter.ALL -> uiState.results.any { it.verdict == Verdict.FAKE || it.verdict == Verdict.SUSPICIOUS }
-                            else -> false
+                        val canDelete = remember(uiState.filter, uiState.fakeCount, uiState.suspiciousCount) {
+                            when (uiState.filter) {
+                                ResultFilter.FAKE -> uiState.fakeCount > 0
+                                ResultFilter.SUSPICIOUS -> uiState.suspiciousCount > 0
+                                ResultFilter.ALL -> uiState.fakeCount > 0 || uiState.suspiciousCount > 0
+                                else -> false
+                            }
                         }
 
                         if (canDelete) {
@@ -322,30 +326,15 @@ fun MainScreen(
             BeginnersGuide(padding)
         } else {
             Column(modifier = Modifier.padding(padding).fillMaxSize().padding(horizontal = 16.dp)) {
-                if (uiState.isScanning) {
-                    Spacer(Modifier.height(8.dp))
-                    val progress = if (uiState.totalTracks > 0)
-                        uiState.scannedTracks / uiState.totalTracks.toFloat() else 0f
-                    LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "${uiState.scannedTracks}/${uiState.totalTracks} — ${uiState.currentTitle}",
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(onClick = { viewModel.cancelScan() }) {
-                            Text("Cancel")
-                        }
-                    }
-                    Text(
-                        "Scan keeps running even if you leave the app — check the notification.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                ScanningProgress(
+                    isScanning = uiState.isScanning,
+                    scannedTracks = uiState.scannedTracks,
+                    totalTracks = uiState.totalTracks,
+                    currentTitle = uiState.currentTitle,
+                    onCancel = { viewModel.cancelScan() }
+                )
 
-                if (uiState.results.isNotEmpty()) {
+                if (uiState.results.isNotEmpty() || uiState.isScanning) {
                     Spacer(Modifier.height(16.dp))
                     
                     OutlinedTextField(
@@ -359,10 +348,8 @@ fun MainScreen(
                     
                     Spacer(Modifier.height(8.dp))
 
-                    val fakeCount = uiState.results.count { it.verdict == Verdict.FAKE }
-                    val suspiciousCount = uiState.results.count { it.verdict == Verdict.SUSPICIOUS }
                     Text(
-                        "${uiState.results.size} lossless/hi-res files — $fakeCount fake, $suspiciousCount suspicious",
+                        "${uiState.results.size} lossless/hi-res files — ${uiState.fakeCount} fake, ${uiState.suspiciousCount} suspicious",
                         style = MaterialTheme.typography.titleSmall
                     )
                     Spacer(Modifier.height(8.dp))
@@ -400,27 +387,75 @@ fun MainScreen(
 
                 Spacer(Modifier.height(8.dp))
 
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(visibleResults, key = { it.track.filePath }) { result ->
-                        TrackRow(
-                            result = result,
-                            isSelected = uiState.selectedUris.contains(result.track.uri),
-                            isSelectionMode = uiState.isSelectionMode,
-                            onClick = {
-                                if (uiState.isSelectionMode) {
-                                    viewModel.toggleSelection(result.track.uri)
-                                } else {
-                                    onTrackClick(result.track)
-                                }
-                            },
-                            onLongClick = {
-                                viewModel.toggleSelection(result.track.uri)
-                            }
-                        )
-                        HorizontalDivider()
-                    }
+                ResultsList(
+                    results = uiState.filteredResults,
+                    selectedUris = uiState.selectedUris,
+                    isSelectionMode = uiState.isSelectionMode,
+                    onClick = { uri, track ->
+                        if (uiState.isSelectionMode) {
+                            viewModel.toggleSelection(uri)
+                        } else {
+                            onTrackClick(track)
+                        }
+                    },
+                    onLongClick = { viewModel.toggleSelection(it) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ScanningProgress(
+    isScanning: Boolean,
+    scannedTracks: Int,
+    totalTracks: Int,
+    currentTitle: String,
+    onCancel: () -> Unit
+) {
+    if (isScanning) {
+        Column {
+            Spacer(Modifier.height(8.dp))
+            val progress = if (totalTracks > 0) scannedTracks / totalTracks.toFloat() else 0f
+            LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "$scannedTracks/$totalTracks — $currentTitle",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = onCancel) {
+                    Text("Cancel")
                 }
             }
+            Text(
+                "Scan keeps running even if you leave the app — check the notification.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+fun ResultsList(
+    results: List<TrackResult>,
+    selectedUris: Set<String>,
+    isSelectionMode: Boolean,
+    onClick: (String, TrackInfo) -> Unit,
+    onLongClick: (String) -> Unit
+) {
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(results, key = { it.track.uri }) { result ->
+            TrackRow(
+                result = result,
+                isSelected = selectedUris.contains(result.track.uri),
+                isSelectionMode = isSelectionMode,
+                onClick = { onClick(result.track.uri, result.track) },
+                onLongClick = { onLongClick(result.track.uri) }
+            )
+            HorizontalDivider()
         }
     }
 }

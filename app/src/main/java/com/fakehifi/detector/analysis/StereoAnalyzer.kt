@@ -70,7 +70,7 @@ object StereoAnalyzer : AudioAnalyzerComponent {
         // completely bypass the collapse penalty to prevent false positives.
         val isNarrowOrMono = globalRatio < 0.05
         
-        val collapsed = !isNarrowOrMono && highFreqRatio < 0.08
+        val collapsed = !isNarrowOrMono && highFreqRatio < 0.05
         val penalty = if (collapsed) {
             if (highFreqRatio < 0.02) 40 else 20
         } else 0

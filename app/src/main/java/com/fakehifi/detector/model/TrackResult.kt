@@ -1,5 +1,6 @@
 package com.fakehifi.detector.model
 
+import androidx.compose.runtime.Immutable
 import com.fakehifi.detector.analysis.ComponentResult
 import com.fakehifi.detector.analysis.QualityResult
 import com.fakehifi.detector.analysis.StereoResult
@@ -8,6 +9,7 @@ enum class Verdict { GENUINE, SUSPICIOUS, FAKE, UNKNOWN }
 
 enum class SortOrder { TITLE_A_TO_Z, LATEST_FIRST, VERDICT }
 
+@Immutable
 data class TrackInfo(
     val uri: String,
     val title: String,
@@ -23,12 +25,14 @@ data class TrackInfo(
  * meaningful when the decoder actually gave us float/high-precision PCM
  * (see AudioDecoder) - otherwise `checked` is false and this is ignored.
  */
+@Immutable
 data class BitDepthResult(
     val checked: Boolean,
     val looksPadded: Boolean,
     val zeroLowBytePercent: Int
 ) : ComponentResult
 
+@Immutable
 data class ConfidenceContribution(
     val label: String,
     val scoreChange: Int, // e.g. +15 or -10
@@ -36,11 +40,13 @@ data class ConfidenceContribution(
     val isPositive: Boolean = scoreChange >= 0
 )
 
+@Immutable
 data class MetadataMismatch(
     val hasMismatch: Boolean,
     val detail: String = ""
 )
 
+@Immutable
 data class TrackResult(
     val track: TrackInfo,
     val sampleRateHz: Int,

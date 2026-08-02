@@ -12,9 +12,11 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.fakehifi.detector.db.AppDatabase
+import com.fakehifi.detector.db.TrackResultSummary
 import com.fakehifi.detector.model.ResultFilter
 import com.fakehifi.detector.model.ScanUiState
 import com.fakehifi.detector.model.SortOrder
+import com.fakehifi.detector.model.TrackResult
 import com.fakehifi.detector.model.Verdict
 import com.fakehifi.detector.repository.ScanRepository
 import com.fakehifi.detector.worker.ScanWorker
@@ -25,7 +27,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -38,24 +42,76 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private val _sortOrder = MutableStateFlow(SortOrder.LATEST_FIRST)
     val sortOrder: StateFlow<SortOrder> = _sortOrder
 
+    private val mappedResultsFlow = ScanRepository.uiState.map { it.isScanning }.distinctUntilChanged()
+        .flatMapLatest { isScanning ->
+            _sortOrder.flatMapLatest { order ->
+                val baseFlow = when (order) {
+                    SortOrder.TITLE_A_TO_Z -> db.trackResultDao().observeAllByTitle()
+                    SortOrder.LATEST_FIRST -> db.trackResultDao().observeAllByLatest()
+                    SortOrder.VERDICT -> db.trackResultDao().observeAllByVerdict()
+                }
+                // Throttle updates during scan to keep UI fluid, 
+                // but ensure we don't block the very first emission.
+                if (isScanning) baseFlow.sample(200) else baseFlow
+            }
+        }
+        .map { summaries ->
+            withContext(Dispatchers.Default) {
+                summaries.map { it.toTrackResult() }
+            }
+        }.distinctUntilChanged()
+
+    private val filterCriteriaFlow = ScanRepository.uiState.map { 
+        it.filter to it.searchQuery 
+    }.distinctUntilChanged()
+
+    private val filteredResultsFlow = combine(mappedResultsFlow, filterCriteriaFlow) { mapped, criteria ->
+        val (filter, searchQuery) = criteria
+        withContext(Dispatchers.Default) {
+            val filtered = when (filter) {
+                ResultFilter.ALL -> mapped
+                ResultFilter.FAKE -> mapped.filter { it.verdict == Verdict.FAKE }
+                ResultFilter.SUSPICIOUS -> mapped.filter { it.verdict == Verdict.SUSPICIOUS }
+                ResultFilter.GENUINE -> mapped.filter { it.verdict == Verdict.GENUINE }
+                ResultFilter.UNKNOWN -> mapped.filter { it.verdict == Verdict.UNKNOWN }
+            }
+
+            val finalResults = if (searchQuery.isNotBlank()) {
+                val q = searchQuery.lowercase()
+                filtered.filter { 
+                    it.track.title.lowercase().contains(q) || 
+                    it.track.artist.lowercase().contains(q) ||
+                    it.track.filePath.lowercase().contains(q)
+                }
+            } else {
+                filtered
+            }
+            
+            val fakes = mapped.count { it.verdict == Verdict.FAKE }
+            val suspicious = mapped.count { it.verdict == Verdict.SUSPICIOUS }
+            
+            ScanUiState(
+                results = mapped,
+                filteredResults = finalResults,
+                fakeCount = fakes,
+                suspiciousCount = suspicious
+            )
+        }
+    }.distinctUntilChanged()
+
     // Combine scanning status from repository with sorted results from database
     val uiState: StateFlow<ScanUiState> = combine(
         ScanRepository.uiState,
-        _sortOrder.flatMapLatest { order ->
-            when (order) {
-                SortOrder.TITLE_A_TO_Z -> db.trackResultDao().observeAllByTitle()
-                SortOrder.LATEST_FIRST -> db.trackResultDao().observeAllByLatest()
-                SortOrder.VERDICT -> db.trackResultDao().observeAllByVerdict()
-            }
-        }
-    ) { repoState, dbResults ->
-        // Perform mapping on Dispatchers.Default to keep UI thread smooth
-        withContext(Dispatchers.Default) {
-            repoState.copy(
-                results = dbResults.map { it.toTrackResult() },
-                sortOrder = _sortOrder.value
-            )
-        }
+        filteredResultsFlow,
+        _sortOrder
+    ) { repoState, computedState, order ->
+        repoState.copy(
+            results = computedState.results,
+            filteredResults = computedState.filteredResults,
+            fakeCount = computedState.fakeCount,
+            suspiciousCount = computedState.suspiciousCount,
+            sortOrder = order
+        )
     }
     .conflate() // Ensure we don't build up a backlog of states
     .stateIn(
@@ -130,6 +186,19 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearSelection() {
         ScanRepository.update { it.copy(selectedUris = emptySet(), isSelectionMode = false) }
+    }
+
+    fun observeFullResult(uri: String): StateFlow<TrackResult?> =
+        db.trackResultDao().observeByUri(uri)
+            .map { it?.toTrackResult() }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5000),
+                initialValue = null
+            )
+
+    suspend fun getFullResult(uri: String): TrackResult? = withContext(Dispatchers.IO) {
+        db.trackResultDao().findByUri(uri)?.toTrackResult()
     }
 
     fun createDeleteRequest(uris: List<String>): PendingIntent? {

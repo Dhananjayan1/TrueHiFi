@@ -66,25 +66,33 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             
             val currentTime = System.currentTimeMillis()
             if (currentTime - lastUpdateMs > 100) {
-                ScanRepository.update { it.copy(currentTitle = track.title, scannedTracks = index) }
+                ScanRepository.update { it.copy(currentTitle = track.title, scannedTracks = index + 1) }
                 updateForeground("${index + 1}/${tracks.size} — ${track.title}", index + 1, tracks.size)
                 lastUpdateMs = currentTime
             }
 
             val cached = withContext(Dispatchers.IO) { db.trackResultDao().findByPath(track.filePath) }
-            if (cached != null &&
-                cached.sizeBytes == track.sizeBytes &&
-                cached.dateAdded == track.dateAdded
-            ) {
-                // Already cached
-            } else {
-                val fresh = analyzeTrack(track, deep = false)
-                withContext(Dispatchers.IO) {
-                    db.trackResultDao().upsert(TrackResultEntity.fromTrackResult(fresh))
+            try {
+                if (cached != null &&
+                    cached.sizeBytes == track.sizeBytes &&
+                    cached.dateAdded == track.dateAdded
+                ) {
+                    // Already cached
+                } else {
+                    val fresh = analyzeTrack(track, deep = false)
+                    withContext(Dispatchers.IO) {
+                        db.trackResultDao().upsert(TrackResultEntity.fromTrackResult(fresh))
+                    }
                 }
+            } catch (e: Exception) {
+                // Skip problematic track and continue scan
+                e.printStackTrace()
             }
-
-            // During full scan, we don't push the entire 'results' list to the repository
+            
+            // Ensure the repository is updated with the final count if we skipped the throttle
+            if (index == tracks.size - 1) {
+                ScanRepository.update { it.copy(scannedTracks = tracks.size) }
+            }
             // on every track. The UI observes the database flow for the list.
             // We only update the progress markers.
         }
@@ -93,7 +101,9 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
     }
 
     private suspend fun startDeepScan(uriString: String) {
-        val existing = ScanRepository.uiState.value.results.find { it.track.uri == uriString } ?: return
+        val existing = withContext(Dispatchers.IO) {
+            db.trackResultDao().findByUri(uriString)?.toTrackResult()
+        } ?: return
         
         updateForeground("Deep scanning ${existing.track.title}…", 0, 1)
         ScanRepository.update { it.copy(isScanning = true, currentTitle = existing.track.title) }
