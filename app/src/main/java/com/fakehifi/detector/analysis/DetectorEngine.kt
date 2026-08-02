@@ -49,8 +49,7 @@ class DetectorEngine(
 
 object VerdictGenerator {
     fun generate(context: AudioContext, results: AnalysisResults): TrackResult {
-        // This will leverage the logic currently in FakeDetector.kt
-        return FakeDetector.classify(
+        val initial = FakeDetector.classify(
             track = context.track,
             format = context.format,
             spectral = results.spectral,
@@ -59,5 +58,13 @@ object VerdictGenerator {
             qualityResult = results.quality,
             isDeepScan = context.isDeepScan
         )
+
+        // Automatic Escalation Logic:
+        // If the result is borderline or has high spectral variance, we signal 
+        // that a deep scan should be performed to resolve the ambiguity.
+        val needsEscalation = !context.isDeepScan && 
+            (initial.confidencePercent in 35..55 || results.spectral.consistencyPenalty > 20)
+
+        return initial.copy(escalationRequired = needsEscalation)
     }
 }

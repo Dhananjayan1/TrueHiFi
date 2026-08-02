@@ -15,7 +15,9 @@ data class SpectralResult(
     val baseScore: Int = 0,
     val slopeBonus: Int = 0,
     val consistencyPenalty: Int = 0,
-    val sampleSizePenalty: Int = 0
+    val sampleSizePenalty: Int = 0,
+    val spectralCentroidHz: Int = 0,
+    val curvatureScore: Double = 0.0 // Prototype: 2nd derivative at cutoff
 ) : ComponentResult
 
 object SpectralAnalyzer : AudioAnalyzerComponent {
@@ -107,6 +109,9 @@ object SpectralAnalyzer : AudioAnalyzerComponent {
         val consistencyPenalty = (stdDev / 2000.0 * 40).toInt().coerceIn(0, 40)
         val sampleSizePenalty = ((6 - processedCount).coerceAtLeast(0) * 5)
 
+        val centroidHz = calculateSpectralCentroid(accumulated, binHz)
+        val curvature = calculateCurvature(avgMagDb, avgCutoffHz, binHz)
+
         val baseScore = 60
         val confidence = (baseScore + slopeBonus - consistencyPenalty - sampleSizePenalty).coerceIn(5, 99)
 
@@ -120,7 +125,9 @@ object SpectralAnalyzer : AudioAnalyzerComponent {
             baseScore = baseScore,
             slopeBonus = slopeBonus,
             consistencyPenalty = consistencyPenalty,
-            sampleSizePenalty = sampleSizePenalty
+            sampleSizePenalty = sampleSizePenalty,
+            spectralCentroidHz = centroidHz,
+            curvatureScore = curvature
         )
     }
 
@@ -245,6 +252,40 @@ object SpectralAnalyzer : AudioAnalyzerComponent {
     private fun transitionSteepnessScore(slopeDbPerKhz: Double): Int {
         // Empirical thresholds based on lossy encoder corpus testing.
         return (slopeDbPerKhz / 60.0 * 30).toInt().coerceIn(0, 30)
+    }
+
+    private fun calculateSpectralCentroid(magLinear: DoubleArray, binHz: Double): Int {
+        var weightedSum = 0.0
+        var totalMag = 0.0
+        for (i in magLinear.indices) {
+            val freq = i * binHz
+            weightedSum += freq * magLinear[i]
+            totalMag += magLinear[i]
+        }
+        return if (totalMag > 0) (weightedSum / totalMag).toInt() else 0
+    }
+
+    /**
+     * Prototype: Estimates the 2nd derivative of the spectrum near the cutoff.
+     * High positive values indicate a "shoulder" typical of digital LPFs.
+     */
+    private fun calculateCurvature(magDb: DoubleArray, cutoffHz: Int, binHz: Double): Double {
+        if (cutoffHz <= 3000) return 0.0
+        val cutoffBin = (cutoffHz / binHz).toInt().coerceIn(2, magDb.size - 1)
+        
+        // Use a 1kHz window before the cutoff to find the slope change
+        val bin1k = (1000 / binHz).toInt().coerceAtLeast(1)
+        val p1 = cutoffBin
+        val p2 = (cutoffBin - bin1k).coerceAtLeast(0)
+        val p3 = (cutoffBin - 2 * bin1k).coerceAtLeast(0)
+        
+        if (p3 == p2 || p2 == p1) return 0.0
+        
+        val slope1 = (magDb[p2] - magDb[p1]) / 1.0 // dB/kHz
+        val slope2 = (magDb[p3] - magDb[p2]) / 1.0 // dB/kHz
+        
+        // Curvature is the change in slope
+        return (slope1 - slope2)
     }
 
     private fun downsample(magDb: DoubleArray, points: Int): List<Double> {

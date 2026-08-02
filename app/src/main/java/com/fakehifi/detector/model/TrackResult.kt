@@ -64,5 +64,6 @@ data class TrackResult(
     val multiSpectrums: List<List<Double>> = emptyList(), // overlay data
     val spectrumBinHz: Double = 0.0,
     val confidenceBreakdown: List<ConfidenceContribution> = emptyList(),
-    val metadataMismatch: MetadataMismatch = MetadataMismatch(false)
+    val metadataMismatch: MetadataMismatch = MetadataMismatch(false),
+    val escalationRequired: Boolean = false
 )

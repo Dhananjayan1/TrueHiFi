@@ -79,9 +79,15 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                 ) {
                     // Already cached
                 } else {
-                    val fresh = analyzeTrack(track, deep = false)
+                    var result = analyzeTrack(track, deep = false)
+                    
+                    if (result.escalationRequired) {
+                        // Automatically upgrade to deep scan if result is ambiguous
+                        result = analyzeTrack(track, deep = true)
+                    }
+
                     withContext(Dispatchers.IO) {
-                        db.trackResultDao().upsert(TrackResultEntity.fromTrackResult(fresh))
+                        db.trackResultDao().upsert(TrackResultEntity.fromTrackResult(result))
                     }
                 }
             } catch (e: Exception) {

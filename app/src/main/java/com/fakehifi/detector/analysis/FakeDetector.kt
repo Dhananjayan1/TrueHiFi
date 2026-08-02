@@ -49,8 +49,13 @@ object FakeDetector {
 
         val estimatedBitrate = estimateOriginalBitrate(cutoffHz)
 
-        // Empirical Bandwidth Targets
-        val targetGenuineHz = if (sampleRateHz <= 48000) 18800 else 24000
+        // Content-Aware Bandwidth Targets
+        // If the spectral centroid is low (indicating "dark" content like cello, 
+        // ambient, or low-pass mastered tracks), we scale the target bandwidth 
+        // down to avoid false positives.
+        val centroidRatio = (spectral.spectralCentroidHz.toDouble() / 5000.0).coerceIn(0.7, 1.0)
+        val baseTarget = if (sampleRateHz <= 48000) 18800 else 24000
+        val targetGenuineHz = (baseTarget * centroidRatio).toInt()
 
         val breakdown = mutableListOf<ConfidenceContribution>()
         
@@ -62,7 +67,11 @@ object FakeDetector {
 
         if (cutoffHz < targetGenuineHz - 2000) {
             // Informational only, doesn't affect confidence directly here as it's part of the verdict decision
-            breakdown.add(ConfidenceContribution("Spectral Bandwidth", 0, "Sharp spectral cutoff detected at ${cutoffHz / 1000.0} kHz"))
+            breakdown.add(ConfidenceContribution("Spectral Bandwidth", 0, "Lower than expected bandwidth for this content type (${cutoffHz / 1000.0} kHz)"))
+        }
+
+        if (spectral.curvatureScore > 15.0) {
+            breakdown.add(ConfidenceContribution("Spectral Curvature", -10, "Digital 'shoulder' detected near cutoff (prototype metric)"))
         }
 
         // 2. Metadata Verification Contribution (Capped at 15%)
@@ -86,14 +95,13 @@ object FakeDetector {
             cutoffHz <= MP3_192_CUTOFF + 1000 && slope > 25 -> {
                 verdict = Verdict.FAKE
                 reason = "Spectrum ends sharply at ${cutoffHz / 1000.0}kHz (slope ${slope.toInt()}dB/kHz). This " +
-                    "strongly aligns with empirically established lossy encoder profiles (~128-192 kbps) " +
-                    "repackaged as ${qualityLabel(sampleRateHz, bitDepth)}."
+                    "strongly aligns with empirically established lossy encoder profiles (~128-192 kbps)."
             }
             // 2. High-bitrate lossy (320kbps) signature: sharp ~20kHz cutoff
-            cutoffHz <= MP3_320_CUTOFF + 500 && slope > 35 -> {
+            cutoffHz <= MP3_320_CUTOFF + 500 && (slope > 35 || (slope > 25 && spectral.curvatureScore > 20.0)) -> {
                 verdict = Verdict.FAKE
                 reason = "Sheer brick-wall cutoff at ~20kHz (slope ${slope.toInt()}dB/kHz). This " +
-                    "strongly aligns with empirically established lossy encoder profiles (~320 kbps) transcode."
+                    "strongly aligns with high-bitrate lossy encoder profiles (~320 kbps)."
             }
             // 3. Genuine full-spectrum or High-Res bandwidth
             cutoffHz >= targetGenuineHz -> {
