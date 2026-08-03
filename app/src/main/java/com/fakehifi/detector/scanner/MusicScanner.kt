@@ -67,6 +67,8 @@ object MusicScanner {
     private fun isLosslessOrHiRes(mime: String): Boolean {
         val m = mime.lowercase()
         return m.contains("flac") || m.contains("wav") ||
-            m.contains("alac") || m.contains("ape") || m.contains("aiff")
+            m.contains("alac") || m.contains("ape") || m.contains("aiff") ||
+            m.contains("x-m4a") || m.contains("mp4a.40.1") || // ALAC in M4A
+            m.contains("apple-lossless")
     }
 }

@@ -1,11 +1,15 @@
 package com.fakehifi.detector.ui
 
 import android.graphics.Bitmap
+import android.widget.Toast
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.GraphicEq
@@ -30,19 +35,71 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.fakehifi.detector.model.TrackResult
 import com.fakehifi.detector.model.Verdict
+import com.fakehifi.detector.ui.components.InfoButton
 import com.fakehifi.detector.ui.theme.VerdictFake
 import com.fakehifi.detector.ui.theme.VerdictGenuine
 import com.fakehifi.detector.ui.theme.VerdictSuspicious
 import com.fakehifi.detector.ui.theme.VerdictUnknown
+import kotlinx.coroutines.flow.StateFlow
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+fun DetailScreen(
+    initialUri: String,
+    results: List<TrackResult>,
+    isScanning: Boolean,
+    onBack: () -> Unit,
+    onDeepScan: (String) -> Unit,
+    onDelete: (String) -> Unit,
+    observeResult: (String) -> StateFlow<TrackResult?>
+) {
+    if (results.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+
+    val initialIndex = remember(initialUri) {
+        results.indexOfFirst { it.track.uri == initialUri }.coerceAtLeast(0)
+    }
+    val pagerState = rememberPagerState(initialPage = initialIndex) { results.size }
+
+    HorizontalPager(
+        state = pagerState,
+        modifier = Modifier.fillMaxSize(),
+        beyondViewportPageCount = 1
+    ) { page ->
+        val summary = results[page]
+        val fullResult by observeResult(summary.track.uri).collectAsState()
+
+        if (fullResult != null) {
+            TrackDetailContent(
+                result = fullResult!!,
+                isScanning = isScanning,
+                onBack = onBack,
+                onDeepScan = { onDeepScan(summary.track.uri) },
+                onDelete = { onDelete(summary.track.uri) }
+            )
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DetailScreen(
+fun TrackDetailContent(
     result: TrackResult,
     isScanning: Boolean,
     onBack: () -> Unit,
@@ -51,11 +108,23 @@ fun DetailScreen(
 ) {
     val verdictColor = colorFor(result.verdict)
     var showSpectrogram by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(result.track.title, maxLines = 1) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(result.track.title, maxLines = 1, modifier = Modifier.weight(1f, false))
+                        IconButton(onClick = {
+                            clipboardManager.setText(AnnotatedString(result.track.title))
+                            Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                        }) {
+                            Icon(Icons.Filled.ContentCopy, contentDescription = "Copy Track Name", modifier = Modifier.size(18.dp))
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
@@ -101,11 +170,31 @@ fun DetailScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            InfoRow("Sample rate", "${result.sampleRateHz / 1000.0} kHz")
-            InfoRow("Bit depth", "${result.bitDepth}-bit")
-            InfoRow("Detected cutoff", "${result.detectedCutoffHz / 1000.0} kHz")
+            InfoRow(
+                label = "Sample rate",
+                value = "${result.sampleRateHz / 1000.0} kHz",
+                infoTitle = "Sample Rate",
+                infoText = "The number of samples of audio carried per second, measured in Hz or kHz. High-res audio usually starts at 88.2kHz or 96kHz."
+            )
+            InfoRow(
+                label = "Bit depth",
+                value = "${result.bitDepth}-bit",
+                infoTitle = "Bit Depth",
+                infoText = "The number of bits of information in each sample. 16-bit is CD quality; 24-bit allows for more dynamic range and detail."
+            )
+            InfoRow(
+                label = "Detected cutoff",
+                value = "${result.detectedCutoffHz / 1000.0} kHz",
+                infoTitle = "Cutoff Frequency",
+                infoText = "The exact frequency where audio data abruptly ends. Lossy formats like MP3 usually cut off at 16kHz or 20kHz to save space."
+            )
             if (result.originalBitrateKbps > 0) {
-                InfoRow("Estimated source", "~${result.originalBitrateKbps} kbps")
+                InfoRow(
+                    label = "Estimated source",
+                    value = "~${result.originalBitrateKbps} kbps",
+                    infoTitle = "Estimated Bitrate",
+                    infoText = "The amount of data processed per second. In lossless audio, it varies based on complexity. If too low for the claimed quality, it might be a fake."
+                )
             }
             InfoRow("Theoretical ceiling", "${result.sampleRateHz / 2000} kHz")
 
@@ -121,7 +210,12 @@ fun DetailScreen(
 
             result.qualityResult?.let { qr ->
                 Spacer(Modifier.height(12.dp))
-                InfoRow("Dynamic Range", "DR%.0f".format(qr.dynamicRange))
+                InfoRow(
+                    label = "Dynamic Range",
+                    value = "DR%.0f".format(qr.dynamicRange),
+                    infoTitle = "Dynamic Range",
+                    infoText = "The difference between the quietest and loudest parts of a track. Higher range often means better, less 'squashed' mastering."
+                )
                 InfoRow("True Peak", "%.2f dBFS".format(qr.peakDb))
                 if (qr.clippedSamplesCount > 0) {
                     InfoRow("Clipping", "${qr.clippedSamplesCount} samples (max ${qr.maxConsecutiveClipped} consecutive)")
@@ -142,10 +236,18 @@ fun DetailScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    if (showSpectrogram) "Spectrogram (Time/Freq)" else "Frequency spectrum",
-                    style = MaterialTheme.typography.titleSmall
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (showSpectrogram) "Spectrogram (Time/Freq)" else "Frequency spectrum",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    InfoButton(
+                        title = if (showSpectrogram) "Spectrogram" else "Frequency Spectrum",
+                        description = if (showSpectrogram) 
+                            "A 3D heat map showing how frequencies change over time. Look for 'gaps' or 'shelves' that shouldn't be there in lossless files." 
+                            else "A graph showing the volume of each frequency. Real high-res audio has content that extends smoothly into high frequencies."
+                    )
+                }
                 
                 IconButton(onClick = { showSpectrogram = !showSpectrogram }) {
                     Icon(
@@ -222,6 +324,10 @@ fun ConfidenceBreakdownCard(result: TrackResult) {
             Text("Confidence Breakdown", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(12.dp))
             
+            if (result.confidenceBreakdown.isEmpty()) {
+                Text("No detailed breakdown available. Try a Deep Scan.", style = MaterialTheme.typography.bodySmall)
+            }
+
             result.confidenceBreakdown.forEach { contribution ->
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -257,6 +363,10 @@ fun HumanReadableReasons(result: TrackResult) {
         Text("Detailed Insights", style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(8.dp))
         
+        if (result.confidenceBreakdown.isEmpty()) {
+            Text("Insights are generated after scan completion.", style = MaterialTheme.typography.bodySmall)
+        }
+
         result.confidenceBreakdown.forEach { contribution ->
             Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -409,14 +519,25 @@ private fun mapDbToColor(db: Double): Color {
 }
 
 @Composable
-private fun InfoRow(label: String, value: String) {
+private fun InfoRow(
+    label: String,
+    value: String,
+    infoTitle: String? = null,
+    infoText: String? = null
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (infoTitle != null && infoText != null) {
+                InfoButton(title = infoTitle, description = infoText)
+            }
+        }
         Text(value, style = MaterialTheme.typography.bodyMedium)
     }
 }

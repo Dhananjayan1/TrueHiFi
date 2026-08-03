@@ -186,14 +186,19 @@ object AudioDecoder {
         // Android, so this falls back to 16 for those - the bit-depth
         // padding check still runs whenever float decode succeeds, just
         // isn't labeled against a known "claimed" depth in that case.
-        return if (format.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
-            when (format.getInteger(MediaFormat.KEY_PCM_ENCODING)) {
+        if (format.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
+            return when (format.getInteger(MediaFormat.KEY_PCM_ENCODING)) {
                 AudioFormat.ENCODING_PCM_8BIT -> 8
                 AudioFormat.ENCODING_PCM_16BIT -> 16
                 AudioFormat.ENCODING_PCM_FLOAT -> 24
                 else -> 16
             }
-        } else 16
+        }
+        
+        // Try specific keys for ALAC/FLAC if available
+        if (format.containsKey("bits-per-sample")) return format.getInteger("bits-per-sample")
+        
+        return 16
     }
 
     private fun evenlySpacedPositions(durationUs: Long, count: Int, windowUs: Long): List<Long> {

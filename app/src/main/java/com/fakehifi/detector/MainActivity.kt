@@ -17,7 +17,9 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -162,24 +164,17 @@ fun AppNavHost(
             val encodedUri = backStackEntry.arguments?.getString("uri") ?: return@composable
             val uri = URLDecoder.decode(encodedUri, "UTF-8")
             
-            val fullResult by remember(uri) { viewModel.observeFullResult(uri) }.collectAsState()
-
-            if (fullResult != null) {
-                DetailScreen(
-                    result = fullResult!!,
-                    isScanning = uiState.isScanning,
-                    onBack = { navController.popBackStack() },
-                    onDeepScan = { viewModel.startDeepScan(uri) },
-                    onDelete = {
-                        launchDelete(listOf(uri))
-                        navController.popBackStack()
-                    }
-                )
-            } else {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-            }
+            DetailScreen(
+                initialUri = uri,
+                results = uiState.filteredResults,
+                isScanning = uiState.isScanning,
+                onBack = { navController.popBackStack() },
+                onDeepScan = { viewModel.startDeepScan(it) },
+                onDelete = {
+                    launchDelete(listOf(it))
+                },
+                observeResult = { viewModel.observeFullResult(it) }
+            )
         }
     }
 }
@@ -193,6 +188,14 @@ fun MainScreen(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
+    val listState = rememberLazyListState()
+
+    // Fix Filter Scroll Position: Snap back to top when filter changes
+    LaunchedEffect(uiState.filter) {
+        if (uiState.filteredResults.isNotEmpty()) {
+            listState.scrollToItem(0)
+        }
+    }
     
     val permissions = remember {
         buildList {
@@ -389,6 +392,7 @@ fun MainScreen(
 
                 ResultsList(
                     results = uiState.filteredResults,
+                    listState = listState,
                     selectedUris = uiState.selectedUris,
                     isSelectionMode = uiState.isSelectionMode,
                     onClick = { uri, track ->
@@ -441,12 +445,13 @@ fun ScanningProgress(
 @Composable
 fun ResultsList(
     results: List<TrackResult>,
+    listState: LazyListState,
     selectedUris: Set<String>,
     isSelectionMode: Boolean,
     onClick: (String, TrackInfo) -> Unit,
     onLongClick: (String) -> Unit
 ) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+    LazyColumn(modifier = Modifier.fillMaxSize(), state = listState) {
         items(results, key = { it.track.uri }) { result ->
             TrackRow(
                 result = result,

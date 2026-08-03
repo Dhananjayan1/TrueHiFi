@@ -47,7 +47,10 @@ data class TrackResultEntity(
     val isDeepScan: Boolean,
     val spectrumDbCsv: String, // comma-separated, downsampled magnitude-in-dB values
     val multiSpectrumsCsv: String = "", // pipe separated windows, comma separated bins
-    val spectrumBinHz: Double
+    val spectrumBinHz: Double,
+    val confidenceBreakdownCsv: String = "", // serialized contributions
+    val metadataMismatchHasMismatch: Boolean = false,
+    val metadataMismatchDetail: String = ""
 ) {
     fun toTrackResult(): TrackResult = TrackResult(
         track = TrackInfo(uri, title, artist, filePath, sizeBytes, dateAdded, durationMs),
@@ -68,7 +71,22 @@ data class TrackResultEntity(
             else multiSpectrumsCsv.split("|").map { window -> 
                 window.split(",").mapNotNull { it.toDoubleOrNull() } 
             },
-        spectrumBinHz = spectrumBinHz
+        spectrumBinHz = spectrumBinHz,
+        confidenceBreakdown = if (confidenceBreakdownCsv.isBlank()) emptyList()
+            else confidenceBreakdownCsv.split("||").mapNotNull { entry ->
+                val parts = entry.split("::")
+                if (parts.size >= 3) {
+                    com.fakehifi.detector.model.ConfidenceContribution(
+                        label = parts[0],
+                        scoreChange = parts[1].toIntOrNull() ?: 0,
+                        message = parts[2]
+                    )
+                } else null
+            },
+        metadataMismatch = com.fakehifi.detector.model.MetadataMismatch(
+            hasMismatch = metadataMismatchHasMismatch,
+            detail = metadataMismatchDetail
+        )
     )
 
     companion object {
@@ -103,7 +121,12 @@ data class TrackResultEntity(
             multiSpectrumsCsv = result.multiSpectrums.joinToString("|") { window ->
                 window.joinToString(",") { "%.1f".format(it) }
             },
-            spectrumBinHz = result.spectrumBinHz
+            spectrumBinHz = result.spectrumBinHz,
+            confidenceBreakdownCsv = result.confidenceBreakdown.joinToString("||") { 
+                "${it.label}::${it.scoreChange}::${it.message}"
+            },
+            metadataMismatchHasMismatch = result.metadataMismatch.hasMismatch,
+            metadataMismatchDetail = result.metadataMismatch.detail
         )
     }
 }
