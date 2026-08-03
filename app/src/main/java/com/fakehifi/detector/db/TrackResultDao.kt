@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 interface TrackResultDao {
 
     companion object {
-        const val SUMMARY_COLUMNS = "filePath, uri, title, artist, sizeBytes, dateAdded, durationMs, sampleRateHz, bitDepth, detectedCutoffHz, confidencePercent, verdict, reason, bitDepthChecked, bitDepthLooksPadded, bitDepthZeroLowBytePercent, peakDb, rmsDb, dynamicRange, clippedSamplesCount, maxConsecutiveClipped, hasJointStereoCollapse, sideToMidHighFreqRatio, stereoConfidencePenalty, originalBitrateKbps, isDeepScan"
+        const val SUMMARY_COLUMNS = "filePath, uri, title, artist, sizeBytes, dateAdded, durationMs, sampleRateHz, bitDepth, detectedCutoffHz, confidencePercent, verdict, reason, bitDepthChecked, bitDepthLooksPadded, bitDepthZeroLowBytePercent, peakDb, rmsDb, medianRmsDb, dynamicRange, drRating, isBrickwalled, clippedSamplesCount, maxConsecutiveClipped, hasJointStereoCollapse, sideToMidHighFreqRatio, stereoConfidencePenalty, originalBitrateKbps, isDeepScan"
     }
 
     @Query("SELECT $SUMMARY_COLUMNS FROM track_results")

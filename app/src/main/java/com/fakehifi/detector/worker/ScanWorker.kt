@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
@@ -41,14 +42,17 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
     override suspend fun doWork(): WorkResult {
         val action = inputData.getString(KEY_ACTION)
         val uriString = inputData.getString(KEY_URI)
+        val folderUri = inputData.getString(KEY_FOLDER_URI)
 
         createNotificationChannel()
         
         return try {
             println("TrueHiFi: Worker received action: $action for uri: $uriString")
             when (action) {
-                ACTION_START_SCAN -> startFullScan()
+                ACTION_START_SCAN -> startFullScan(folderUri)
                 ACTION_DEEP_SCAN -> uriString?.let { startDeepScan(it) } ?: return WorkResult.failure()
+                ACTION_SINGLE_FILE_SCAN -> uriString?.let { startSingleFileScan(it) } ?: return WorkResult.failure()
+                ACTION_INCREMENTAL_SCAN -> startIncrementalScan()
                 else -> return WorkResult.failure()
             }
             WorkResult.success()
@@ -58,10 +62,10 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         }
     }
 
-    private suspend fun startFullScan() {
+    private suspend fun startFullScan(folderUri: String?) {
         updateForeground("Starting scan…", 0, 0)
         
-        val tracks = withContext(Dispatchers.IO) { MusicScanner.findAllTracks(applicationContext) }
+        val tracks = withContext(Dispatchers.IO) { MusicScanner.findAllTracks(applicationContext, folderUri) }
         ScanRepository.update {
             it.copy(isScanning = true, totalTracks = tracks.size, scannedTracks = 0, results = emptyList())
         }
@@ -116,6 +120,44 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         }
 
         ScanRepository.update { it.copy(isScanning = false, currentTitle = "", scannedTracks = tracks.size) }
+    }
+
+    private suspend fun startSingleFileScan(uriString: String) {
+        val track = withContext(Dispatchers.IO) { MusicScanner.getTrackInfoFromUri(applicationContext, Uri.parse(uriString)) }
+            ?: return
+        
+        ScanRepository.update { it.copy(isScanning = true, currentTitle = track.title) }
+        
+        // Take persistable permission if needed
+        try {
+            applicationContext.contentResolver.takePersistableUriPermission(
+                Uri.parse(uriString),
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (e: Exception) {}
+
+        val result = analyzeTrack(track, deep = false)
+        withContext(Dispatchers.IO) {
+            db.trackResultDao().upsert(TrackResultEntity.fromTrackResult(result))
+        }
+        ScanRepository.update { it.copy(isScanning = false, currentTitle = "") }
+    }
+
+    private suspend fun startIncrementalScan() {
+        // Just a quick scan of the 20 most recent tracks in MediaStore
+        val recentTracks = withContext(Dispatchers.IO) { MusicScanner.findAllTracks(applicationContext) }
+            .sortedByDescending { it.dateAdded }
+            .take(20)
+
+        for (track in recentTracks) {
+            val cached = withContext(Dispatchers.IO) { db.trackResultDao().findByPath(track.filePath) }
+            if (cached == null) {
+                val result = analyzeTrack(track, deep = false)
+                withContext(Dispatchers.IO) {
+                    db.trackResultDao().upsert(TrackResultEntity.fromTrackResult(result))
+                }
+            }
+        }
     }
 
     private suspend fun startDeepScan(uriString: String) {
@@ -194,8 +236,11 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
     companion object {
         const val KEY_ACTION = "action"
         const val KEY_URI = "uri"
+        const val KEY_FOLDER_URI = "folder_uri"
         const val ACTION_START_SCAN = "start_scan"
         const val ACTION_DEEP_SCAN = "deep_scan"
+        const val ACTION_SINGLE_FILE_SCAN = "single_file_scan"
+        const val ACTION_INCREMENTAL_SCAN = "incremental_scan"
         
         private const val CHANNEL_ID = "scan_channel"
         private const val NOTIF_ID = 42

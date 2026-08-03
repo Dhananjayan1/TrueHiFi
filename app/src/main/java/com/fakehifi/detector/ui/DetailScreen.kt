@@ -1,6 +1,8 @@
 package com.fakehifi.detector.ui
 
 import android.graphics.Bitmap
+import android.content.Intent
+import androidx.core.content.ContextCompat.startActivity
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -36,11 +38,20 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.fakehifi.detector.analysis.HardwareScanner
 import com.fakehifi.detector.model.TrackResult
 import com.fakehifi.detector.model.Verdict
 import com.fakehifi.detector.ui.components.InfoButton
@@ -59,6 +70,9 @@ fun DetailScreen(
     onBack: () -> Unit,
     onDeepScan: (String) -> Unit,
     onDelete: (String) -> Unit,
+    onShare: (TrackResult) -> Unit,
+    contributeEnabled: Boolean,
+    onContribute: (TrackResult) -> Unit,
     observeResult: (String) -> StateFlow<TrackResult?>
 ) {
     if (results.isEmpty()) {
@@ -105,7 +119,10 @@ fun DetailScreen(
                 isScanning = isScanning,
                 onBack = onBack,
                 onDeepScan = { onDeepScan(summary.track.uri) },
-                onDelete = { onDelete(summary.track.uri) }
+                onDelete = { onDelete(summary.track.uri) },
+                onShare = { onShare(it) },
+                contributeEnabled = contributeEnabled,
+                onContribute = { onContribute(it) }
             )
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -122,7 +139,10 @@ fun TrackDetailContent(
     isScanning: Boolean,
     onBack: () -> Unit,
     onDeepScan: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onShare: (TrackResult) -> Unit,
+    contributeEnabled: Boolean,
+    onContribute: (TrackResult) -> Unit
 ) {
     val verdictColor = colorFor(result.verdict)
     var showSpectrogram by remember { mutableStateOf(false) }
@@ -149,6 +169,9 @@ fun TrackDetailContent(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { onShare(result) }) {
+                        Icon(Icons.Filled.Share, contentDescription = "Share Certificate")
+                    }
                     IconButton(onClick = onDelete) {
                         Icon(Icons.Filled.Delete, contentDescription = "Delete Track")
                     }
@@ -242,11 +265,44 @@ fun TrackDetailContent(
 
             result.qualityResult?.let { qr ->
                 Spacer(Modifier.height(12.dp))
+                
+                val drColor = when {
+                    qr.drRating >= 10 -> VerdictGenuine
+                    qr.drRating >= 7 -> VerdictSuspicious
+                    else -> VerdictFake
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Dynamic Range", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        InfoButton(
+                            title = "Dynamic Range (DR Rating)", 
+                            description = "A standardized measure of the difference between the loudest and quietest parts of the track. Higher numbers indicate better mastering with more punch and detail. DR12+ is excellent; DR6 or below is heavily compressed."
+                        )
+                    }
+                    Surface(
+                        color = drColor.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            "DR${qr.drRating}", 
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = drColor
+                        )
+                    }
+                }
+
                 InfoRow(
-                    label = "Dynamic Range",
-                    value = "DR%.0f".format(qr.dynamicRange),
-                    infoTitle = "Dynamic Range",
-                    infoText = "The difference between the quietest and loudest parts of a track. Higher range often means better, less 'squashed' mastering."
+                    label = "Crest Factor",
+                    value = "%.1f dB".format(qr.dynamicRange),
+                    infoTitle = "Crest Factor",
+                    infoText = "The difference between the peak and the average (RMS) volume level. It's the raw data used to calculate the DR Rating."
                 )
                 InfoRow(
                     label = "True Peak",
@@ -267,8 +323,18 @@ fun TrackDetailContent(
             result.stereoResult?.let { sr ->
                 if (sr.hasJointStereoCollapse) {
                     Spacer(Modifier.height(12.dp))
-                    InfoRow("Stereo integrity", "Joint Stereo Collapse detected")
-                    InfoRow("Side-to-Mid ratio", "%.1f%%".format(sr.sideToMidHighFreqRatio * 100))
+                    InfoRow(
+                        label = "Stereo integrity",
+                        value = "Joint Stereo Collapse detected",
+                        infoTitle = "Stereo Integrity",
+                        infoText = "Detects if the stereo image has been compromised. 'Joint Stereo Collapse' is a common artifact of lossy encoding where high-frequency stereo detail is discarded to save space."
+                    )
+                    InfoRow(
+                        label = "Side-to-Mid ratio",
+                        value = "%.1f%%".format(sr.sideToMidHighFreqRatio * 100),
+                        infoTitle = "Side-to-Mid Ratio",
+                        infoText = "Compares the energy of the 'Side' (stereo difference) vs the 'Mid' (mono sum). A very low ratio at high frequencies indicates the stereo information has been stripped away."
+                    )
                 }
             }
 
@@ -320,6 +386,9 @@ fun TrackDetailContent(
             Spacer(Modifier.height(16.dp))
             HumanReadableReasons(result = result)
 
+            Spacer(Modifier.height(24.dp))
+            HardwareMatchCard(result = result)
+
             if (result.metadataMismatch.hasMismatch) {
                 Spacer(Modifier.height(16.dp))
                 Card(
@@ -359,6 +428,81 @@ fun TrackDetailContent(
                 Spacer(Modifier.width(8.dp))
                 Text(buttonText)
             }
+            
+            if (contributeEnabled) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { onContribute(result) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Contribute to Community Database")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HardwareMatchCard(result: TrackResult) {
+    val context = LocalContext.current
+    val hardware = remember { HardwareScanner.getCurrentOutputCapabilities(context) }
+    
+    val isDownsampled = result.sampleRateHz > hardware.maxSampleRateHz
+    val statusColor = if (isDownsampled) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = statusColor.copy(alpha = 0.1f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    "Hardware Match", 
+                    style = MaterialTheme.typography.titleSmall, 
+                    color = statusColor
+                )
+                if (isDownsampled) {
+                    Icon(Icons.Default.Error, contentDescription = null, tint = statusColor, modifier = Modifier.size(16.dp))
+                }
+            }
+            
+            Spacer(Modifier.height(12.dp))
+            
+            Text(
+                text = "Output: ${hardware.deviceName}",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Hardware Limit: ${hardware.maxSampleRateHz / 1000.0} kHz / ${hardware.maxBitDepth}-bit",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            
+            Spacer(Modifier.height(8.dp))
+            
+            if (isDownsampled) {
+                Text(
+                    text = "Warning: This ${result.sampleRateHz / 1000.0} kHz file will be downsampled by Android to ${hardware.maxSampleRateHz / 1000.0} kHz for this output device.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = statusColor
+                )
+            } else {
+                Text(
+                    text = "Perfect Match: Your hardware supports the full resolution of this file.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
     }
 }
@@ -396,7 +540,7 @@ fun ConfidenceBreakdownCard(result: TrackResult) {
                     )
                 }
                 LinearProgressIndicator(
-                    progress = { (contribution.scoreChange.toFloat().coerceAtLeast(0f) / 100f).coerceIn(0f, 1f) },
+                    progress = { (kotlin.math.abs(contribution.scoreChange).toFloat() / 100f).coerceIn(0f, 1f) },
                     modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
                     color = if (contribution.isPositive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                     trackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
@@ -465,6 +609,56 @@ private fun ReasonItem(icon: androidx.compose.ui.graphics.vector.ImageVector, te
 }
 
 @Composable
+fun ZoomableBox(
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit
+) {
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    val state = rememberTransformableState { zoomChange, offsetChange, _ ->
+        scale *= zoomChange
+        offset += offsetChange
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black)
+            .pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = {
+                    scale = 1f
+                    offset = androidx.compose.ui.geometry.Offset.Zero
+                })
+            }
+            .transformable(state = state)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(
+                    scaleX = scale.coerceIn(1f, 5f),
+                    scaleY = scale.coerceIn(1f, 5f),
+                    translationX = offset.x,
+                    translationY = offset.y
+                ),
+            content = content
+        )
+        
+        if (scale > 1f) {
+            IconButton(
+                onClick = {
+                    scale = 1f
+                    offset = androidx.compose.ui.geometry.Offset.Zero
+                },
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)
+            ) {
+                Icon(Icons.Filled.Refresh, contentDescription = "Reset Zoom", tint = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
 private fun SpectrogramView(result: TrackResult, modifier: Modifier = Modifier) {
     if (result.multiSpectrums.isEmpty()) {
         Box(
@@ -491,26 +685,23 @@ private fun SpectrogramView(result: TrackResult, modifier: Modifier = Modifier) 
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Box(
+        ZoomableBox(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(240.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color.Black)
-                .horizontalScroll(rememberScrollState())
+                .height(300.dp)
         ) {
             spectrogramBitmap?.let {
                 Image(
                     bitmap = it.asImageBitmap(),
                     contentDescription = "Spectrogram",
-                    modifier = Modifier.fillMaxHeight().width(maxOf(400.dp, (result.multiSpectrums.size * 20).dp)),
+                    modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.FillBounds
                 )
             }
         }
         
         Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Time →", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Time → (Double-tap to reset zoom)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("${result.sampleRateHz / 2000} kHz", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

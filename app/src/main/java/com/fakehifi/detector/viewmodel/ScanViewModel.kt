@@ -126,13 +126,32 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         // Initial setup if needed, but results are now driven by the combined Flow
     }
 
-    fun startScan() {
+    fun startScan(folderUri: String? = null) {
         val workRequest = OneTimeWorkRequestBuilder<ScanWorker>()
-            .setInputData(Data.Builder().putString(ScanWorker.KEY_ACTION, ScanWorker.ACTION_START_SCAN).build())
+            .setInputData(
+                Data.Builder()
+                    .putString(ScanWorker.KEY_ACTION, ScanWorker.ACTION_START_SCAN)
+                    .putString(ScanWorker.KEY_FOLDER_URI, folderUri)
+                    .build()
+            )
             .build()
         
         WorkManager.getInstance(getApplication())
             .enqueueUniqueWork("full_scan", ExistingWorkPolicy.REPLACE, workRequest)
+    }
+
+    fun startSingleFileScan(uri: android.net.Uri) {
+        val workRequest = OneTimeWorkRequestBuilder<ScanWorker>()
+            .setInputData(
+                Data.Builder()
+                    .putString(ScanWorker.KEY_ACTION, ScanWorker.ACTION_SINGLE_FILE_SCAN)
+                    .putString(ScanWorker.KEY_URI, uri.toString())
+                    .build()
+            )
+            .build()
+        
+        WorkManager.getInstance(getApplication())
+            .enqueueUniqueWork("single_scan_${uri.hashCode()}", ExistingWorkPolicy.REPLACE, workRequest)
     }
 
     fun startDeepScan(trackUri: String) {
@@ -192,6 +211,16 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         ScanRepository.update { it.copy(selectedUris = emptySet(), isSelectionMode = false) }
     }
 
+    fun selectAllByVerdict(verdict: Verdict) {
+        val uris = uiState.value.results.filter { it.verdict == verdict }.map { it.track.uri }.toSet()
+        ScanRepository.update { it.copy(selectedUris = uris, isSelectionMode = uris.isNotEmpty()) }
+    }
+
+    fun selectAllFiltered() {
+        val uris = uiState.value.filteredResults.map { it.track.uri }.toSet()
+        ScanRepository.update { it.copy(selectedUris = uris, isSelectionMode = uris.isNotEmpty()) }
+    }
+
     fun observeFullResult(uri: String): StateFlow<TrackResult?> = synchronized(resultFlowCache) {
         resultFlowCache.getOrPut(uri) {
             db.trackResultDao().observeByUri(uri)
@@ -210,8 +239,31 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
     fun createDeleteRequest(uris: List<String>): PendingIntent? {
         val contentResolver = getApplication<Application>().contentResolver
-        // 1. Before generating the request, ensure the target URIs actually still exist on the disk.
-        val validUris = uris.map { it.toUri() }.filter { uri ->
+        val validUris = filterValidUris(uris)
+        if (validUris.isEmpty()) return null
+        
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            MediaStore.createDeleteRequest(contentResolver, validUris)
+        } else {
+            null
+        }
+    }
+
+    fun createTrashRequest(uris: List<String>, trash: Boolean): PendingIntent? {
+        val contentResolver = getApplication<Application>().contentResolver
+        val validUris = filterValidUris(uris)
+        if (validUris.isEmpty()) return null
+        
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            MediaStore.createTrashRequest(contentResolver, validUris, trash)
+        } else {
+            null
+        }
+    }
+
+    private fun filterValidUris(uris: List<String>): List<android.net.Uri> {
+        val contentResolver = getApplication<Application>().contentResolver
+        return uris.map { it.toUri() }.filter { uri ->
             try {
                 contentResolver.query(uri, arrayOf(MediaStore.Audio.Media._ID), null, null, null)?.use { cursor ->
                     cursor.moveToFirst()
@@ -219,14 +271,6 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 false
             }
-        }
-        
-        if (validUris.isEmpty()) return null
-        
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            MediaStore.createDeleteRequest(contentResolver, validUris)
-        } else {
-            null
         }
     }
 

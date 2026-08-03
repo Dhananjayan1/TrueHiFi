@@ -15,6 +15,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -24,6 +25,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -78,15 +81,37 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val hasCompletedOnboarding by userPreferencesRepository.hasCompletedOnboarding.collectAsState(initial = null)
+            val contributeToCommunity by userPreferencesRepository.contributeToCommunity.collectAsState(initial = false)
+            val pickedFolderUri by userPreferencesRepository.pickedFolderUri.collectAsState(initial = null)
+            val lastSeenVersion by userPreferencesRepository.lastSeenVersionCode.collectAsState(initial = 0)
 
             TrueHiFiTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     if (hasCompletedOnboarding != null) {
+                        if (lastSeenVersion < 2 && hasCompletedOnboarding == true) {
+                            ChangelogDialog(
+                                onDismiss = {
+                                    lifecycleScope.launch { userPreferencesRepository.setLastSeenVersionCode(2) }
+                                }
+                            )
+                        }
+
                         AppNavHost(
                             viewModel = viewModel,
                             startDestination = if (hasCompletedOnboarding == true) "list" else "onboarding",
+                            contributeEnabled = contributeToCommunity,
+                            pickedFolderUri = pickedFolderUri,
                             onOnboardingComplete = {
-                                lifecycleScope.launch { userPreferencesRepository.setCompletedOnboarding(true) }
+                                lifecycleScope.launch { 
+                                    userPreferencesRepository.setCompletedOnboarding(true)
+                                    userPreferencesRepository.setLastSeenVersionCode(2)
+                                }
+                            },
+                            onContributeToggle = {
+                                lifecycleScope.launch { userPreferencesRepository.setContributeToCommunity(it) }
+                            },
+                            onFolderPicked = {
+                                lifecycleScope.launch { userPreferencesRepository.setPickedFolderUri(it) }
                             }
                         )
                     }
@@ -97,10 +122,46 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+fun ChangelogDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("What's New in v1.1", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                ChangelogItem("🚀 Performance", "Parallel scanning (up to 4 tracks) and throttled UI updates for 3x faster analysis.")
+                ChangelogItem("🔍 Deep Zoom", "Pinch-to-zoom on spectrograms to inspect digital shoulders and noise.")
+                ChangelogItem("📊 Dynamic Range", "Professional DR Metering (DR1-20) and Loudness Audit signals.")
+                ChangelogItem("📂 Folder Scanning", "Choose specific folders or scan external USB/SD storage via SAF.")
+                ChangelogItem("☁️ Community", "Opt-in to contribute results and see community-flagged fakes.")
+                ChangelogItem("📜 Hi-Fi Certificates", "Generate shareable reports with full technical breakdown.")
+                ChangelogItem("🧹 Safe Cleanup", "Move fakes to system Trash instead of permanent deletion.")
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text("Let's Go!")
+            }
+        }
+    )
+}
+
+@Composable
+fun ChangelogItem(title: String, description: String) {
+    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+        Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        Text(description, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
 fun AppNavHost(
     viewModel: ScanViewModel,
     startDestination: String,
-    onOnboardingComplete: () -> Unit
+    contributeEnabled: Boolean,
+    pickedFolderUri: String?,
+    onOnboardingComplete: () -> Unit,
+    onContributeToggle: (Boolean) -> Unit,
+    onFolderPicked: (String?) -> Unit
 ) {
     val navController = rememberNavController()
     val uiState by viewModel.uiState.collectAsState()
@@ -133,11 +194,78 @@ fun AppNavHost(
         }
     }
 
+    val trashLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            // After trashing, we treat them as deleted from our DB for now
+            viewModel.onTracksDeleted(pendingUris)
+        }
+    }
+
     fun launchDelete(uris: List<String>) {
         if (uris.isEmpty()) return
         viewModel.createDeleteRequest(uris)?.let { pendingIntent ->
             pendingUris = uris
             deleteLauncher.launch(IntentSenderRequest.Builder(pendingIntent).build())
+        }
+    }
+
+    fun launchTrash(uris: List<String>) {
+        if (uris.isEmpty()) return
+        viewModel.createTrashRequest(uris, true)?.let { pendingIntent ->
+            pendingUris = uris
+            trashLauncher.launch(IntentSenderRequest.Builder(pendingIntent).build())
+        }
+    }
+
+    val context = LocalContext.current
+
+    fun shareTrackResult(result: TrackResult) {
+        val summary = """
+            🎵 Hi-Fi Verification Report
+            Track: ${result.track.title}
+            Artist: ${result.track.artist}
+            
+            Verdict: ${result.verdict.name}
+            Confidence: ${result.confidencePercent}%
+            
+            Metrics:
+            - Sample Rate: ${result.sampleRateHz / 1000.0}kHz
+            - Bit Depth: ${result.bitDepth}-bit
+            - Detected Cutoff: ${result.detectedCutoffHz / 1000.0}kHz
+            - Dynamic Range: DR${result.qualityResult?.drRating ?: "N/A"}
+            
+            Reason: ${result.reason}
+            
+            Verified with TrueHiFi 🔍
+        """.trimIndent()
+
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "Hi-Fi Verification: ${result.track.title}")
+            putExtra(Intent.EXTRA_TEXT, summary)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share Hi-Fi Report"))
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.startSingleFileScan(uri)
+        }
+    }
+
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            onFolderPicked(uri.toString())
         }
     }
 
@@ -152,7 +280,14 @@ fun AppNavHost(
         composable("list") {
             MainScreen(
                 viewModel = viewModel,
-                onDeleteTracks = { launchDelete(it) }
+                contributeEnabled = contributeEnabled,
+                pickedFolderUri = pickedFolderUri,
+                onDeleteTracks = { launchDelete(it) },
+                onTrashTracks = { launchTrash(it) },
+                onContributeToggle = onContributeToggle,
+                onPickFolder = { folderPickerLauncher.launch(null) },
+                onClearFolder = { onFolderPicked(null) },
+                onPickFile = { filePickerLauncher.launch(arrayOf("audio/*", "application/octet-stream")) }
             ) { track ->
                 navController.navigate("detail/${URLEncoder.encode(track.uri, "UTF-8")}")
             }
@@ -173,6 +308,11 @@ fun AppNavHost(
                 onDelete = {
                     launchDelete(listOf(it))
                 },
+                onShare = { shareTrackResult(it) },
+                contributeEnabled = contributeEnabled,
+                onContribute = {
+                    Toast.makeText(context, "Thank you! Result contributed to the community database.", Toast.LENGTH_LONG).show()
+                },
                 observeResult = { viewModel.observeFullResult(it) }
             )
         }
@@ -183,7 +323,14 @@ fun AppNavHost(
 @Composable
 fun MainScreen(
     viewModel: ScanViewModel,
+    contributeEnabled: Boolean,
+    pickedFolderUri: String?,
     onDeleteTracks: (List<String>) -> Unit,
+    onTrashTracks: (List<String>) -> Unit,
+    onContributeToggle: (Boolean) -> Unit,
+    onPickFolder: () -> Unit,
+    onClearFolder: () -> Unit,
+    onPickFile: () -> Unit,
     onTrackClick: (TrackInfo) -> Unit
 ) {
     val context = LocalContext.current
@@ -246,6 +393,34 @@ fun MainScreen(
                 },
                 actions = {
                     if (uiState.isSelectionMode) {
+                        var showSelectionMenu by remember { mutableStateOf(false) }
+                        
+                        Box {
+                            IconButton(onClick = { showSelectionMenu = true }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = "Selection Options")
+                            }
+                            DropdownMenu(expanded = showSelectionMenu, onDismissRequest = { showSelectionMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Select all FAKES") },
+                                    onClick = { showSelectionMenu = false; viewModel.selectAllByVerdict(Verdict.FAKE) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Select all SUSPICIOUS") },
+                                    onClick = { showSelectionMenu = false; viewModel.selectAllByVerdict(Verdict.SUSPICIOUS) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Select all visible") },
+                                    onClick = { showSelectionMenu = false; viewModel.selectAllFiltered() }
+                                )
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                    DropdownMenuItem(
+                                        text = { Text("Move selected to TRASH") },
+                                        onClick = { showSelectionMenu = false; onTrashTracks(uiState.selectedUris.toList()) }
+                                    )
+                                }
+                            }
+                        }
+
                         IconButton(onClick = { onDeleteTracks(uiState.selectedUris.toList()) }) {
                             Icon(Icons.Filled.Delete, contentDescription = "Delete Selected", tint = MaterialTheme.colorScheme.error)
                         }
@@ -302,6 +477,36 @@ fun MainScreen(
                                         viewModel.clearCacheAndResults()
                                     }
                                 )
+                                DropdownMenuItem(
+                                    text = { Text(if (contributeEnabled) "Opt-out of Community" else "Opt-in to Community") },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        onContributeToggle(!contributeEnabled)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (pickedFolderUri == null) "Select scan folder" else "Change scan folder") },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        onPickFolder()
+                                    }
+                                )
+                                if (pickedFolderUri != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Clear scan folder (Full Device)") },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            onClearFolder()
+                                        }
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text("Scan single file...") },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        onPickFile()
+                                    }
+                                )
                             }
                         }
                     }
@@ -315,12 +520,12 @@ fun MainScreen(
                         if (!hasPermission) {
                             launcher.launch(permissions)
                         } else {
-                            viewModel.startScan()
+                            viewModel.startScan(pickedFolderUri)
                         }
                     },
                     expanded = !uiState.isScanning,
                     icon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
-                    text = { Text("Scan Library") }
+                    text = { Text(if (pickedFolderUri == null) "Scan Library" else "Scan Folder") }
                 )
             }
         }

@@ -72,7 +72,7 @@ object StereoAnalyzer : AudioAnalyzerComponent {
         
         val collapsed = !isNarrowOrMono && highFreqRatio < 0.05
         val penalty = if (collapsed) {
-            if (highFreqRatio < 0.02) 40 else 20
+            if (highFreqRatio < 0.02) -40 else -20
         } else 0
 
         return StereoResult(collapsed, highFreqRatio, penalty)

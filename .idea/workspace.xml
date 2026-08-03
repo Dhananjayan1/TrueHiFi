@@ -10,14 +10,21 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="973976f8-71dc-4526-a11d-4ca27717a558" name="Changes" comment=" implemented UX improvements, bug fixes, and features across the UI, State, and Audio layers.">
-      <change beforePath="$PROJECT_DIR$/.idea/planningMode.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/planningMode.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.github/workflows/release.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/TrueHiFiApplication.kt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/HardwareScanner.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/app/build.gradle.kts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/AndroidManifest.xml" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/AndroidManifest.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/MainActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/MainActivity.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/AudioDecoder.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/AudioDecoder.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/FakeDetector.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/FakeDetector.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/QualityAnalyzer.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/QualityAnalyzer.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/StereoAnalyzer.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/StereoAnalyzer.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/db/TrackResultDao.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/db/TrackResultDao.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/db/TrackResultEntity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/db/TrackResultEntity.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/model/TrackResult.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/model/TrackResult.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/db/TrackResultSummary.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/db/TrackResultSummary.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/repository/UserPreferencesRepository.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/repository/UserPreferencesRepository.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/scanner/MusicScanner.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/scanner/MusicScanner.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/ui/DetailScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/ui/DetailScreen.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/viewmodel/ScanViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/viewmodel/ScanViewModel.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/worker/ScanWorker.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/worker/ScanWorker.kt" afterDir="false" />
@@ -30,7 +37,7 @@
   <component name="ClangdSettings">
     <option name="formatViaClangd" value="false" />
   </component>
-  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[PhysicalDevice::serial=10BF1Z1G95002H9]" />
+  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[]" />
   <component name="ExternalProjectsData">
     <projectState path="$PROJECT_DIR$">
       <ProjectState />
@@ -313,7 +320,15 @@
       <option name="project" value="LOCAL" />
       <updated>1785724867201</updated>
     </task>
-    <option name="localTasksCounter" value="18" />
+    <task id="LOCAL-00018" summary=" implemented UX improvements, bug fixes, and features across the UI, State, and Audio layers.">
+      <option name="closed" value="true" />
+      <created>1785729817886</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1785729817886</updated>
+    </task>
+    <option name="localTasksCounter" value="19" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
