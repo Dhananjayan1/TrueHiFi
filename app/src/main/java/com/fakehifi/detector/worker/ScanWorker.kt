@@ -25,14 +25,11 @@ import com.fakehifi.detector.model.TrackInfo
 import com.fakehifi.detector.model.TrackResult
 import com.fakehifi.detector.repository.ScanRepository
 import com.fakehifi.detector.scanner.MusicScanner
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     private val db = AppDatabase.get(context)
@@ -62,7 +59,7 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         }
     }
 
-    private suspend fun startFullScan(folderUri: String?) {
+    private suspend fun startFullScan(folderUri: String?) = coroutineScope {
         updateForeground("Starting scan…", 0, 0)
         
         val tracks = withContext(Dispatchers.IO) { MusicScanner.findAllTracks(applicationContext, folderUri) }
@@ -70,56 +67,60 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             it.copy(isScanning = true, totalTracks = tracks.size, scannedTracks = 0, results = emptyList())
         }
 
-        val semaphore = Semaphore(4)
         var scannedCount = 0
         var lastUpdateMs = 0L
+        val totalCount = tracks.size
 
-        coroutineScope {
-            for (track in tracks) {
-                launch {
-                    semaphore.withPermit {
-                        val cached = withContext(Dispatchers.IO) { db.trackResultDao().findByPath(track.filePath) }
-                        try {
-                            if (cached != null &&
-                                cached.sizeBytes == track.sizeBytes &&
-                                cached.dateAdded == track.dateAdded
-                            ) {
-                                // Already cached
-                            } else {
-                                val result = withTimeoutOrNull(30_000) {
-                                    var r = analyzeTrack(track, deep = false)
-                                    if (r.escalationRequired) {
-                                        r = analyzeTrack(track, deep = true)
-                                    }
-                                    r
+        // Parallel processing with a limited concurrency (4)
+        // Instead of launching 10,000 coroutines at once, we use a Flow and flatMapMerge
+        // to keep memory pressure low.
+        tracks.asFlow()
+            .flatMapMerge(concurrency = 4) { track ->
+                flow {
+                    val cached = withContext(Dispatchers.IO) { db.trackResultDao().findByPath(track.filePath) }
+                    try {
+                        if (cached != null &&
+                            cached.sizeBytes == track.sizeBytes &&
+                            cached.dateAdded == track.dateAdded
+                        ) {
+                            // Already cached
+                        } else {
+                            val result = withTimeoutOrNull(30_000) {
+                                var r = analyzeTrack(track, deep = false)
+                                if (r.escalationRequired) {
+                                    r = analyzeTrack(track, deep = true)
                                 }
-
-                                if (result != null) {
-                                    withContext(Dispatchers.IO) {
-                                        db.trackResultDao().upsert(TrackResultEntity.fromTrackResult(result))
-                                    }
-                                }
+                                r
                             }
-                        } catch (e: Exception) {
-                            println("TrueHiFi: Error scanning ${track.title}: ${e.message}")
-                        } finally {
-                            synchronized(this@ScanWorker) {
-                                scannedCount++
-                                val currentTime = System.currentTimeMillis()
-                                if (currentTime - lastUpdateMs > 500 || scannedCount == tracks.size) {
-                                    lastUpdateMs = currentTime
-                                    val count = scannedCount
-                                    ScanRepository.update { it.copy(currentTitle = track.title, scannedTracks = count) }
-                                    launch { updateForeground("${count}/${tracks.size} — ${track.title}", count, tracks.size) }
+
+                            if (result != null) {
+                                withContext(Dispatchers.IO) {
+                                    db.trackResultDao().upsert(TrackResultEntity.fromTrackResult(result))
                                 }
                             }
                         }
+                    } catch (e: Exception) {
+                        println("TrueHiFi: Error scanning ${track.title}: ${e.message}")
+                    } finally {
+                        emit(track)
                     }
                 }
             }
-        }
+            .collect { track ->
+                synchronized(this@ScanWorker) {
+                    scannedCount++
+                    val currentTime = System.currentTimeMillis()
+                    if (currentTime - lastUpdateMs > 500 || scannedCount == totalCount) {
+                        lastUpdateMs = currentTime
+                        val count = scannedCount
+                        ScanRepository.update { it.copy(currentTitle = track.title, scannedTracks = count) }
+                        // Update foreground non-blockingly
+                        launch { updateForeground("${count}/${totalCount} — ${track.title}", count, totalCount) }
+                    }
+                }
+            }
 
-        ScanRepository.update { it.copy(isScanning = false, currentTitle = "", scannedTracks = tracks.size) }
+        ScanRepository.update { it.copy(isScanning = false, currentTitle = "", scannedTracks = totalCount) }
     }
 
     private suspend fun startSingleFileScan(uriString: String) {

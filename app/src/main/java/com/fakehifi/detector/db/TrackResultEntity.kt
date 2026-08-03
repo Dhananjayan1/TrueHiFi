@@ -139,9 +139,9 @@ data class TrackResultEntity(
             stereoConfidencePenalty = result.stereoResult?.confidencePenalty ?: 0,
             originalBitrateKbps = result.originalBitrateKbps,
             isDeepScan = result.isDeepScan,
-            spectrumDbCsv = result.spectrumDb.joinToString(",") { "%.1f".format(it) },
+            spectrumDbCsv = result.spectrumDb.joinToString(",") { it.toOneDecimalString() },
             multiSpectrumsCsv = result.multiSpectrums.joinToString("|") { window ->
-                window.joinToString(",") { "%.1f".format(it) }
+                window.joinToString(",") { it.toOneDecimalString() }
             },
             spectrumBinHz = result.spectrumBinHz,
             confidenceBreakdownCsv = result.confidenceBreakdown.joinToString("||") { 
@@ -151,4 +151,13 @@ data class TrackResultEntity(
             metadataMismatchDetail = result.metadataMismatch.detail
         )
     }
+}
+
+private fun Double.toOneDecimalString(): String {
+    if (this.isNaN() || this.isInfinite()) return "0.0"
+    // Manual formatting is much faster and lighter on memory than String.format for 100k+ calls
+    val rounded = Math.round(this * 10).toLong()
+    val absVal = Math.abs(rounded)
+    val sign = if (rounded < 0) "-" else ""
+    return "$sign${absVal / 10}.${absVal % 10}"
 }

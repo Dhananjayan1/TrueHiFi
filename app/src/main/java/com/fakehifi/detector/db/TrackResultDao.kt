@@ -25,6 +25,12 @@ interface TrackResultDao {
     @Query("SELECT $SUMMARY_COLUMNS FROM track_results ORDER BY CASE verdict WHEN 'FAKE' THEN 0 WHEN 'SUSPICIOUS' THEN 1 WHEN 'GENUINE' THEN 2 ELSE 3 END ASC, title ASC")
     fun observeAllByVerdict(): Flow<List<TrackResultSummary>>
 
+    @Query("SELECT count(*) FROM track_results WHERE verdict = 'FAKE'")
+    fun countFakes(): Flow<Int>
+
+    @Query("SELECT count(*) FROM track_results WHERE verdict = 'SUSPICIOUS'")
+    fun countSuspicious(): Flow<Int>
+
     @Query("SELECT * FROM track_results WHERE uri = :uri LIMIT 1")
     fun observeByUri(uri: String): Flow<TrackResultEntity?>
 

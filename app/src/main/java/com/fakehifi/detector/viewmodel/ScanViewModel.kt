@@ -56,45 +56,42 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
                 // but ensure we don't block the very first emission.
                 if (isScanning) baseFlow.sample(200) else baseFlow
             }
-        }
-        .map { summaries ->
-            withContext(Dispatchers.Default) {
-                summaries.map { it.toTrackResult() }
-            }
         }.distinctUntilChanged()
 
     private val filterCriteriaFlow = ScanRepository.uiState.map { 
         it.filter to it.searchQuery 
     }.distinctUntilChanged()
 
-    private val filteredResultsFlow = combine(mappedResultsFlow, filterCriteriaFlow) { mapped, criteria ->
+    private val filteredResultsFlow = combine(
+        mappedResultsFlow, 
+        filterCriteriaFlow,
+        db.trackResultDao().countFakes(),
+        db.trackResultDao().countSuspicious()
+    ) { mapped, criteria, fakes, suspicious ->
         val (filter, searchQuery) = criteria
         withContext(Dispatchers.Default) {
             val filtered = when (filter) {
                 ResultFilter.ALL -> mapped
-                ResultFilter.FAKE -> mapped.filter { it.verdict == Verdict.FAKE }
-                ResultFilter.SUSPICIOUS -> mapped.filter { it.verdict == Verdict.SUSPICIOUS }
-                ResultFilter.GENUINE -> mapped.filter { it.verdict == Verdict.GENUINE }
-                ResultFilter.UNKNOWN -> mapped.filter { it.verdict == Verdict.UNKNOWN }
+                ResultFilter.FAKE -> mapped.filter { it.verdict == Verdict.FAKE.name }
+                ResultFilter.SUSPICIOUS -> mapped.filter { it.verdict == Verdict.SUSPICIOUS.name }
+                ResultFilter.GENUINE -> mapped.filter { it.verdict == Verdict.GENUINE.name }
+                ResultFilter.UNKNOWN -> mapped.filter { it.verdict == Verdict.UNKNOWN.name }
             }
 
             val finalResults = if (searchQuery.isNotBlank()) {
                 val q = searchQuery.lowercase()
                 filtered.filter { 
-                    it.track.title.lowercase().contains(q) || 
-                    it.track.artist.lowercase().contains(q) ||
-                    it.track.filePath.lowercase().contains(q)
+                    it.title.lowercase().contains(q) || 
+                    it.artist.lowercase().contains(q) ||
+                    it.filePath.lowercase().contains(q)
                 }
             } else {
                 filtered
             }
             
-            val fakes = mapped.count { it.verdict == Verdict.FAKE }
-            val suspicious = mapped.count { it.verdict == Verdict.SUSPICIOUS }
-            
             ScanUiState(
-                results = mapped,
-                filteredResults = finalResults,
+                results = mapped.map { it.toTrackResult() },
+                filteredResults = finalResults.map { it.toTrackResult() },
                 fakeCount = fakes,
                 suspiciousCount = suspicious
             )
