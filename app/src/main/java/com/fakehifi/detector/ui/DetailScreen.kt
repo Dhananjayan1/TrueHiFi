@@ -73,13 +73,31 @@ fun DetailScreen(
     }
     val pagerState = rememberPagerState(initialPage = initialIndex) { results.size }
 
+    // Fix Blinking/Jumping: Keep the pager locked to the current track URI if the list updates
+    var lastUri by remember { mutableStateOf(initialUri) }
+    LaunchedEffect(results) {
+        val newIndex = results.indexOfFirst { it.track.uri == lastUri }
+        if (newIndex != -1 && newIndex != pagerState.currentPage) {
+            pagerState.scrollToPage(newIndex)
+        }
+    }
+    
+    // Update lastUri when the user manually swipes
+    LaunchedEffect(pagerState.currentPage) {
+        if (pagerState.currentPage < results.size) {
+            lastUri = results[pagerState.currentPage].track.uri
+        }
+    }
+
     HorizontalPager(
         state = pagerState,
         modifier = Modifier.fillMaxSize(),
-        beyondViewportPageCount = 1
+        beyondViewportPageCount = 1,
+        key = { page -> if (page < results.size) results[page].track.uri else page }
     ) { page ->
         val summary = results[page]
-        val fullResult by observeResult(summary.track.uri).collectAsState()
+        val resultFlow = remember(summary.track.uri) { observeResult(summary.track.uri) }
+        val fullResult by resultFlow.collectAsState()
 
         if (fullResult != null) {
             TrackDetailContent(
@@ -144,7 +162,6 @@ fun TrackDetailContent(
                 .padding(padding)
                 .fillMaxSize()
                 .verticalScroll(scrollState)
-                .navigationBarsPadding()
                 .padding(16.dp)
         ) {
             Text(result.track.artist, style = MaterialTheme.typography.bodyMedium)
@@ -164,7 +181,17 @@ fun TrackDetailContent(
                     Text("${result.confidencePercent}% confidence", style = MaterialTheme.typography.bodySmall)
                 }
                 if (result.isDeepScan) {
-                    AssistChip(onClick = {}, label = { Text("Deep scan") })
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        shape = CircleShape
+                    ) {
+                        Text(
+                            text = "Deep result",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
                 }
             }
 
@@ -196,7 +223,12 @@ fun TrackDetailContent(
                     infoText = "The amount of data processed per second. In lossless audio, it varies based on complexity. If too low for the claimed quality, it might be a fake."
                 )
             }
-            InfoRow("Theoretical ceiling", "${result.sampleRateHz / 2000} kHz")
+            InfoRow(
+                label = "Theoretical ceiling",
+                value = "${result.sampleRateHz / 2000} kHz",
+                infoTitle = "Theoretical Ceiling",
+                infoText = "The maximum frequency that can be represented by this sample rate (Nyquist frequency). Anything above this is physically impossible to store."
+            )
 
             result.bitDepthResult?.let { bd ->
                 if (bd.checked) {
@@ -216,9 +248,19 @@ fun TrackDetailContent(
                     infoTitle = "Dynamic Range",
                     infoText = "The difference between the quietest and loudest parts of a track. Higher range often means better, less 'squashed' mastering."
                 )
-                InfoRow("True Peak", "%.2f dBFS".format(qr.peakDb))
+                InfoRow(
+                    label = "True Peak",
+                    value = "%.2f dBFS".format(qr.peakDb),
+                    infoTitle = "True Peak",
+                    infoText = "The highest volume level reached in the track. In digital audio, 0.00 dBFS is the maximum; anything approaching or exceeding this can cause distortion."
+                )
                 if (qr.clippedSamplesCount > 0) {
-                    InfoRow("Clipping", "${qr.clippedSamplesCount} samples (max ${qr.maxConsecutiveClipped} consecutive)")
+                    InfoRow(
+                        label = "Clipping",
+                        value = "${qr.clippedSamplesCount} samples (max ${qr.maxConsecutiveClipped} consecutive)",
+                        infoTitle = "Clipping",
+                        infoText = "When audio volume exceeds the maximum limit, the peaks are 'cut off,' causing permanent loss of detail and audible distortion."
+                    )
                 }
             }
 
@@ -300,14 +342,22 @@ fun TrackDetailContent(
 
             Spacer(Modifier.height(24.dp))
 
+            val buttonText = when {
+                isScanning -> "Scan in progress..."
+                result.isDeepScan -> "Deep scan again"
+                result.escalationRequired -> "Run recommended Deep Scan"
+                else -> "Run Deep Scan (more accurate, slower)"
+            }
+
             Button(
                 onClick = onDeepScan,
                 enabled = !isScanning,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                colors = if (result.escalationRequired) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary) else ButtonDefaults.buttonColors()
             ) {
                 Icon(Icons.Filled.GraphicEq, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (result.isDeepScan) "Deep scan again" else "Run deep scan (more accurate, slower)")
+                Text(buttonText)
             }
         }
     }
@@ -380,7 +430,7 @@ fun HumanReadableReasons(result: TrackResult) {
                 )
                 Spacer(Modifier.width(12.dp))
                 Text(
-                    text = contribution.message,
+                    text = contribution.insight.ifBlank { contribution.message },
                     style = MaterialTheme.typography.bodyMedium
                 )
             }

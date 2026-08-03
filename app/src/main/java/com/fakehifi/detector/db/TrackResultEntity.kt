@@ -75,7 +75,14 @@ data class TrackResultEntity(
         confidenceBreakdown = if (confidenceBreakdownCsv.isBlank()) emptyList()
             else confidenceBreakdownCsv.split("||").mapNotNull { entry ->
                 val parts = entry.split("::")
-                if (parts.size >= 3) {
+                if (parts.size >= 4) {
+                    com.fakehifi.detector.model.ConfidenceContribution(
+                        label = parts[0],
+                        scoreChange = parts[1].toIntOrNull() ?: 0,
+                        message = parts[2],
+                        insight = parts[3]
+                    )
+                } else if (parts.size == 3) {
                     com.fakehifi.detector.model.ConfidenceContribution(
                         label = parts[0],
                         scoreChange = parts[1].toIntOrNull() ?: 0,
@@ -123,7 +130,7 @@ data class TrackResultEntity(
             },
             spectrumBinHz = result.spectrumBinHz,
             confidenceBreakdownCsv = result.confidenceBreakdown.joinToString("||") { 
-                "${it.label}::${it.scoreChange}::${it.message}"
+                "${it.label}::${it.scoreChange}::${it.message}::${it.insight}"
             },
             metadataMismatchHasMismatch = result.metadataMismatch.hasMismatch,
             metadataMismatchDetail = result.metadataMismatch.detail

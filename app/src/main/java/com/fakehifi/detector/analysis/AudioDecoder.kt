@@ -34,7 +34,7 @@ object AudioDecoder {
     private const val TIMEOUT_US = 10_000L
     const val QUICK_SCAN_WINDOW_COUNT = 6
     const val DEEP_SCAN_WINDOW_COUNT = 24
-    const val QUICK_SCAN_WINDOW_MS = 1500L
+    const val QUICK_SCAN_WINDOW_MS = 1000L
     const val DEEP_SCAN_WINDOW_MS = 2000L
 
     /**
@@ -219,17 +219,18 @@ object AudioDecoder {
         isFloatPcm: Boolean
     ): DecodedWindow {
         val targetSampleCount = (sampleRate * windowDurationMs / 1000).toInt()
-        val outMono = mutableListOf<Float>()
-        val outInt = if (!isFloatPcm) mutableListOf<Int>() else null
-        val outLeft = if (channelCount >= 2) mutableListOf<Float>() else null
-        val outRight = if (channelCount >= 2) mutableListOf<Float>() else null
+        val outMono = FloatArray(targetSampleCount)
+        val outInt = if (!isFloatPcm) IntArray(targetSampleCount) else null
+        val outLeft = if (channelCount >= 2) FloatArray(targetSampleCount) else null
+        val outRight = if (channelCount >= 2) FloatArray(targetSampleCount) else null
         
+        var samplesDecoded = 0
         val bufferInfo = MediaCodec.BufferInfo()
         var sawInputEOS = false
         var sawOutputEOS = false
         var safetyCounter = 0
 
-        while (!sawOutputEOS && outMono.size < targetSampleCount && safetyCounter < 500) {
+        while (!sawOutputEOS && samplesDecoded < targetSampleCount && safetyCounter < 500) {
             kotlinx.coroutines.yield()
             safetyCounter++
             if (!sawInputEOS) {
@@ -259,32 +260,34 @@ object AudioDecoder {
                         val floatBuffer = outBuffer.asFloatBuffer()
                         val n = floatBuffer.remaining()
                         var i = 0
-                        while (i < n) {
+                        while (i < n && samplesDecoded < targetSampleCount) {
                             val left = floatBuffer.get(i)
-                            outMono.add(left)
+                            outMono[samplesDecoded] = left
                             if (channelCount >= 2 && i + 1 < n) {
                                 val right = floatBuffer.get(i + 1)
-                                outLeft?.add(left)
-                                outRight?.add(right)
+                                outLeft?.set(samplesDecoded, left)
+                                outRight?.set(samplesDecoded, right)
                             }
                             i += channelCount.coerceAtLeast(1)
+                            samplesDecoded++
                         }
                     } else {
                         val shortBuffer = outBuffer.asShortBuffer()
                         val n = shortBuffer.remaining()
                         var i = 0
-                        while (i < n) {
+                        while (i < n && samplesDecoded < targetSampleCount) {
                             val leftInt = shortBuffer.get(i)
                             val leftFloat = leftInt / 32768f
-                            outMono.add(leftFloat)
-                            outInt?.add(leftInt.toInt())
+                            outMono[samplesDecoded] = leftFloat
+                            outInt?.set(samplesDecoded, leftInt.toInt())
                             
                             if (channelCount >= 2 && i + 1 < n) {
                                 val rightInt = shortBuffer.get(i + 1)
-                                outLeft?.add(leftFloat)
-                                outRight?.add(rightInt / 32768f)
+                                outLeft?.set(samplesDecoded, leftFloat)
+                                outRight?.set(samplesDecoded, rightInt / 32768f)
                             }
                             i += channelCount.coerceAtLeast(1)
+                            samplesDecoded++
                         }
                     }
                 }
@@ -295,10 +298,15 @@ object AudioDecoder {
             }
         }
         
+        val finalMono = if (samplesDecoded == targetSampleCount) outMono else outMono.copyOf(samplesDecoded)
+        val finalInt = if (outInt == null) null else if (samplesDecoded == targetSampleCount) outInt else outInt.copyOf(samplesDecoded)
+        
         val stereo = if (outLeft != null && outRight != null) {
-            StereoWindow(outLeft.toFloatArray(), outRight.toFloatArray())
+            val finalLeft = if (samplesDecoded == targetSampleCount) outLeft else outLeft.copyOf(samplesDecoded)
+            val finalRight = if (samplesDecoded == targetSampleCount) outRight else outRight.copyOf(samplesDecoded)
+            StereoWindow(finalLeft, finalRight)
         } else null
         
-        return DecodedWindow(outMono.toFloatArray(), outInt?.toIntArray(), stereo)
+        return DecodedWindow(finalMono, finalInt, stereo)
     }
 }

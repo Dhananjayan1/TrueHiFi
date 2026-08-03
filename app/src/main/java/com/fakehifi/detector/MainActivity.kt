@@ -190,10 +190,10 @@ fun MainScreen(
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
 
-    // Fix Filter Scroll Position: Snap back to top when filter changes
-    LaunchedEffect(uiState.filter) {
+    // Fix Filter/Sort Scroll Position: Snap back to top when filter or sort changes
+    LaunchedEffect(uiState.filter, uiState.sortOrder, uiState.searchQuery) {
         if (uiState.filteredResults.isNotEmpty()) {
-            listState.scrollToItem(0)
+            listState.animateScrollToItem(0)
         }
     }
     

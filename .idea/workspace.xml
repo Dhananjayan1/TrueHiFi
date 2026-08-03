@@ -9,19 +9,18 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="973976f8-71dc-4526-a11d-4ca27717a558" name="Changes" comment=" implemented the scientifically-backed improvements to the TrueHiFi analysis engine">
-      <change afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/ui/components/InfoButton.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/gradle.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/gradle.xml" afterDir="false" />
+    <list default="true" id="973976f8-71dc-4526-a11d-4ca27717a558" name="Changes" comment=" implemented UX improvements, bug fixes, and features across the UI, State, and Audio layers.">
       <change beforePath="$PROJECT_DIR$/.idea/planningMode.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/planningMode.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/app/build.gradle.kts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/AndroidManifest.xml" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/AndroidManifest.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/MainActivity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/MainActivity.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/AudioDecoder.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/AudioDecoder.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/FakeDetector.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/analysis/FakeDetector.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/db/TrackResultEntity.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/db/TrackResultEntity.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/scanner/MusicScanner.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/scanner/MusicScanner.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/model/TrackResult.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/model/TrackResult.kt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/ui/DetailScreen.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/ui/DetailScreen.kt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/build.gradle.kts" beforeDir="false" afterPath="$PROJECT_DIR$/build.gradle.kts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/gradle/wrapper/gradle-wrapper.properties" beforeDir="false" afterPath="$PROJECT_DIR$/gradle/wrapper/gradle-wrapper.properties" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/viewmodel/ScanViewModel.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/viewmodel/ScanViewModel.kt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/worker/ScanWorker.kt" beforeDir="false" afterPath="$PROJECT_DIR$/app/src/main/java/com/fakehifi/detector/worker/ScanWorker.kt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -31,7 +30,7 @@
   <component name="ClangdSettings">
     <option name="formatViaClangd" value="false" />
   </component>
-  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[]" />
+  <component name="ExecutionTargetManager" SELECTED_TARGET="device_and_snapshot_combo_box_target[PhysicalDevice::serial=10BF1Z1G95002H9]" />
   <component name="ExternalProjectsData">
     <projectState path="$PROJECT_DIR$">
       <ProjectState />
@@ -69,6 +68,9 @@
     "accountId": "161c07c3-03d0-49da-b6d0-a6531147a4ab"
   }
 }]]></component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="CurrentFile" />
+  </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 1,
   &quot;fromUser&quot;: false
@@ -303,7 +305,15 @@
       <option name="project" value="LOCAL" />
       <updated>1785685131301</updated>
     </task>
-    <option name="localTasksCounter" value="17" />
+    <task id="LOCAL-00017" summary=" implemented UX improvements, bug fixes, and features across the UI, State, and Audio layers.">
+      <option name="closed" value="true" />
+      <created>1785724867201</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1785724867201</updated>
+    </task>
+    <option name="localTasksCounter" value="18" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -312,19 +322,20 @@
     <MESSAGE value=" implemented the Sort by Latest feature" />
     <MESSAGE value="necessary fixes to restore smooth UI performance and scan stability." />
     <MESSAGE value=" implemented the scientifically-backed improvements to the TrueHiFi analysis engine" />
-    <option name="LAST_COMMIT_MESSAGE" value=" implemented the scientifically-backed improvements to the TrueHiFi analysis engine" />
+    <MESSAGE value=" implemented UX improvements, bug fixes, and features across the UI, State, and Audio layers." />
+    <option name="LAST_COMMIT_MESSAGE" value=" implemented UX improvements, bug fixes, and features across the UI, State, and Audio layers." />
   </component>
   <component name="play_dynamic_filters_status">
     <option name="appIdToCheckInfo">
       <map>
         <entry key="com.fakehifi.detector">
           <value>
-            <CheckInfo lastCheckTimestamp="1785596771058" />
+            <CheckInfo lastCheckTimestamp="1785728260416" />
           </value>
         </entry>
         <entry key="com.fakehifi.detector.test">
           <value>
-            <CheckInfo lastCheckTimestamp="1785596771058" />
+            <CheckInfo lastCheckTimestamp="1785728260416" />
           </value>
         </entry>
       </map>

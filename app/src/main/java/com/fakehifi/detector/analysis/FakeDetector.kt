@@ -63,15 +63,30 @@ object FakeDetector {
         val rawSpectralBonus = spectral.slopeBonus - spectral.consistencyPenalty - spectral.sampleSizePenalty
         val spectralContribution = rawSpectralBonus.coerceIn(-30, 30)
         
-        breakdown.add(ConfidenceContribution("Spectral Analysis", spectralContribution, "Based on slope, consistency, and sample size"))
+        breakdown.add(ConfidenceContribution(
+            label = "Spectral Analysis",
+            scoreChange = spectralContribution,
+            message = "Based on slope, consistency, and sample size",
+            insight = "The spectral slope and cross-window consistency were analyzed, resulting in a ${spectralContribution}-point adjustment to the confidence score."
+        ))
 
         if (cutoffHz < targetGenuineHz - 2000) {
             // Informational only, doesn't affect confidence directly here as it's part of the verdict decision
-            breakdown.add(ConfidenceContribution("Spectral Bandwidth", 0, "Lower than expected bandwidth for this content type (${cutoffHz / 1000.0} kHz)"))
+            breakdown.add(ConfidenceContribution(
+                label = "Spectral Bandwidth",
+                scoreChange = 0,
+                message = "Lower than expected bandwidth for this content type (${cutoffHz / 1000.0} kHz)",
+                insight = "The detected cutoff of ${cutoffHz / 1000.0} kHz is lower than the typical threshold for this content type, which suggests potential lossy processing."
+            ))
         }
 
         if (spectral.curvatureScore > 15.0) {
-            breakdown.add(ConfidenceContribution("Spectral Curvature", -10, "Digital 'shoulder' detected near cutoff (prototype metric)"))
+            breakdown.add(ConfidenceContribution(
+                label = "Spectral Curvature",
+                scoreChange = -10,
+                message = "Digital 'shoulder' detected near cutoff (prototype metric)",
+                insight = "An unnatural digital 'shoulder' was detected near the cutoff frequency, which is a common artifact of lossy-to-lossless upscaling, costing 10 confidence points."
+            ))
         }
 
         // 2. Metadata Verification Contribution (Capped at 15%)
@@ -80,11 +95,21 @@ object FakeDetector {
         if (format.declaredBitDepth > 0 && bitDepth < format.declaredBitDepth) {
             metadataMismatch = MetadataMismatch(true, "Declared ${format.declaredBitDepth}-bit, but physically decoded as ${bitDepth}-bit")
             metadataContribution = -15
-            breakdown.add(ConfidenceContribution("Metadata Mismatch", metadataContribution, "Container claims higher bit-depth than physical stream"))
+            breakdown.add(ConfidenceContribution(
+                label = "Metadata Mismatch",
+                scoreChange = metadataContribution,
+                message = "Container claims higher bit-depth than physical stream",
+                insight = "The file container claims a higher bit-depth than what was physically found in the stream, costing ${metadataContribution.coerceAtMost(0).let { if (it < 0) it.toString().substring(1) else it.toString() }} confidence points."
+            ))
         } else if (format.declaredSampleRateHz > 0 && sampleRateHz != format.declaredSampleRateHz) {
             metadataMismatch = MetadataMismatch(true, "Declared ${format.declaredSampleRateHz}Hz, but physically decoded as ${sampleRateHz}Hz")
             metadataContribution = -10
-            breakdown.add(ConfidenceContribution("Metadata Mismatch", metadataContribution, "Container sample rate does not match decoded stream"))
+            breakdown.add(ConfidenceContribution(
+                label = "Metadata Mismatch",
+                scoreChange = metadataContribution,
+                message = "Container sample rate does not match decoded stream",
+                insight = "The file container claims a different sample rate than what was physically decoded, costing ${metadataContribution.coerceAtMost(0).let { if (it < 0) it.toString().substring(1) else it.toString() }} confidence points."
+            ))
         }
 
         // Initialize confidence with base and core contributions
@@ -143,7 +168,12 @@ object FakeDetector {
                     "is only $ratioPercent% of Mid energy, a strong signature of lossy codecs."
             
             val stereoContribution = stereoResult.confidencePenalty.coerceAtMost(20)
-            breakdown.add(ConfidenceContribution("Stereo Integrity", stereoContribution, "Side-channel high-frequency energy collapse"))
+            breakdown.add(ConfidenceContribution(
+                label = "Stereo Integrity",
+                scoreChange = stereoContribution,
+                message = "Side-channel high-frequency energy collapse",
+                insight = "Detected a 'Joint Stereo Collapse' where side-channel energy is unnaturally low, a strong signature of lossy encoding, costing ${stereoContribution.coerceAtMost(0).let { if (it < 0) it.toString().substring(1) else it.toString() }} confidence points."
+            ))
             
             confidence = (confidence + stereoContribution).coerceAtMost(99)
             verdict = when (verdict) {
@@ -161,7 +191,12 @@ object FakeDetector {
                             "this ${bitDepth}-bit file is exactly zero — the extra bit depth appears to carry no real information."
                     
                     val bitDepthContribution = 15
-                    breakdown.add(ConfidenceContribution("Bit-Depth Audit", bitDepthContribution, "Lowest byte is mostly zero-padded"))
+                    breakdown.add(ConfidenceContribution(
+                        label = "Bit-Depth Audit",
+                        scoreChange = bitDepthContribution,
+                        message = "Lowest byte is mostly zero-padded",
+                        insight = "Analysis found that the lowest byte is almost entirely zero, indicating the extra bit depth is likely padded and carries no real audio data, costing ${bitDepthContribution.coerceAtMost(0).let { if (it < 0) it.toString().substring(1) else it.toString() }} confidence points."
+                    ))
                     
                     confidence = (confidence + bitDepthContribution).coerceAtMost(99)
                     verdict = when (verdict) {
@@ -175,7 +210,12 @@ object FakeDetector {
                 reason = "$reason Note: Bit-depth padding audit was bypassed (decoder limitation for this format)."
                 
                 val bitDepthPenalty = -5
-                breakdown.add(ConfidenceContribution("Format Audit", bitDepthPenalty, "Bit-depth padding check was bypassed"))
+                breakdown.add(ConfidenceContribution(
+                    label = "Format Audit",
+                    scoreChange = bitDepthPenalty,
+                    message = "Bit-depth padding check was bypassed",
+                    insight = "The bit-depth padding audit could not be performed due to decoder limitations, reducing overall result confidence by ${bitDepthPenalty.coerceAtMost(0).let { if (it < 0) it.toString().substring(1) else it.toString() }} points."
+                ))
                 
                 // Lower the weight of the result by slightly reducing confidence 
                 // because we are missing one independent signal.
@@ -187,7 +227,12 @@ object FakeDetector {
             reason = "$reason (deep scan, ${AudioDecoder.DEEP_SCAN_WINDOW_COUNT} windows analyzed)"
             
             val deepScanBonus = 10
-            breakdown.add(ConfidenceContribution("Deep Scan", deepScanBonus, "Extended analysis window count bonus"))
+            breakdown.add(ConfidenceContribution(
+                label = "Deep Scan",
+                scoreChange = deepScanBonus,
+                message = "Extended analysis window count bonus",
+                insight = "A deep scan was performed across extra audio windows, confirming spectral consistency and adding ${deepScanBonus} confidence points."
+            ))
             
             confidence = (confidence + deepScanBonus).coerceAtMost(99)
         }

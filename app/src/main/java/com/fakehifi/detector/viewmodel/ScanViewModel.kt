@@ -42,6 +42,8 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     private val _sortOrder = MutableStateFlow(SortOrder.LATEST_FIRST)
     val sortOrder: StateFlow<SortOrder> = _sortOrder
 
+    private val resultFlowCache = mutableMapOf<String, StateFlow<TrackResult?>>()
+
     private val mappedResultsFlow = ScanRepository.uiState.map { it.isScanning }.distinctUntilChanged()
         .flatMapLatest { isScanning ->
             _sortOrder.flatMapLatest { order ->
@@ -134,6 +136,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startDeepScan(trackUri: String) {
+        println("TrueHiFi: ViewModel requesting deep scan for $trackUri")
         val workRequest = OneTimeWorkRequestBuilder<ScanWorker>()
             .setInputData(
                 Data.Builder()
@@ -157,6 +160,7 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSortOrder(order: SortOrder) {
         _sortOrder.value = order
+        ScanRepository.update { it.copy(sortOrder = order) }
     }
 
     fun setSearchQuery(query: String) {
@@ -188,14 +192,17 @@ class ScanViewModel(application: Application) : AndroidViewModel(application) {
         ScanRepository.update { it.copy(selectedUris = emptySet(), isSelectionMode = false) }
     }
 
-    fun observeFullResult(uri: String): StateFlow<TrackResult?> =
-        db.trackResultDao().observeByUri(uri)
-            .map { it?.toTrackResult() }
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000),
-                initialValue = null
-            )
+    fun observeFullResult(uri: String): StateFlow<TrackResult?> = synchronized(resultFlowCache) {
+        resultFlowCache.getOrPut(uri) {
+            db.trackResultDao().observeByUri(uri)
+                .map { it?.toTrackResult() }
+                .stateIn(
+                    scope = viewModelScope,
+                    started = SharingStarted.WhileSubscribed(5000),
+                    initialValue = null
+                )
+        }
+    }
 
     suspend fun getFullResult(uri: String): TrackResult? = withContext(Dispatchers.IO) {
         db.trackResultDao().findByUri(uri)?.toTrackResult()

@@ -25,7 +25,12 @@ import com.fakehifi.detector.model.TrackResult
 import com.fakehifi.detector.repository.ScanRepository
 import com.fakehifi.detector.scanner.MusicScanner
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
@@ -40,13 +45,14 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         createNotificationChannel()
         
         return try {
+            println("TrueHiFi: Worker received action: $action for uri: $uriString")
             when (action) {
                 ACTION_START_SCAN -> startFullScan()
                 ACTION_DEEP_SCAN -> uriString?.let { startDeepScan(it) } ?: return WorkResult.failure()
                 else -> return WorkResult.failure()
             }
             WorkResult.success()
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             ScanRepository.update { it.copy(isScanning = false) }
             WorkResult.failure()
         }
@@ -60,47 +66,53 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             it.copy(isScanning = true, totalTracks = tracks.size, scannedTracks = 0, results = emptyList())
         }
 
+        val semaphore = Semaphore(4)
+        var scannedCount = 0
         var lastUpdateMs = 0L
-        for ((index, track) in tracks.withIndex()) {
-            kotlinx.coroutines.yield()
-            
-            val currentTime = System.currentTimeMillis()
-            if (currentTime - lastUpdateMs > 100) {
-                ScanRepository.update { it.copy(currentTitle = track.title, scannedTracks = index + 1) }
-                updateForeground("${index + 1}/${tracks.size} — ${track.title}", index + 1, tracks.size)
-                lastUpdateMs = currentTime
-            }
 
-            val cached = withContext(Dispatchers.IO) { db.trackResultDao().findByPath(track.filePath) }
-            try {
-                if (cached != null &&
-                    cached.sizeBytes == track.sizeBytes &&
-                    cached.dateAdded == track.dateAdded
-                ) {
-                    // Already cached
-                } else {
-                    var result = analyzeTrack(track, deep = false)
-                    
-                    if (result.escalationRequired) {
-                        // Automatically upgrade to deep scan if result is ambiguous
-                        result = analyzeTrack(track, deep = true)
-                    }
+        coroutineScope {
+            for (track in tracks) {
+                launch {
+                    semaphore.withPermit {
+                        val cached = withContext(Dispatchers.IO) { db.trackResultDao().findByPath(track.filePath) }
+                        try {
+                            if (cached != null &&
+                                cached.sizeBytes == track.sizeBytes &&
+                                cached.dateAdded == track.dateAdded
+                            ) {
+                                // Already cached
+                            } else {
+                                val result = withTimeoutOrNull(30_000) {
+                                    var r = analyzeTrack(track, deep = false)
+                                    if (r.escalationRequired) {
+                                        r = analyzeTrack(track, deep = true)
+                                    }
+                                    r
+                                }
 
-                    withContext(Dispatchers.IO) {
-                        db.trackResultDao().upsert(TrackResultEntity.fromTrackResult(result))
+                                if (result != null) {
+                                    withContext(Dispatchers.IO) {
+                                        db.trackResultDao().upsert(TrackResultEntity.fromTrackResult(result))
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            println("TrueHiFi: Error scanning ${track.title}: ${e.message}")
+                        } finally {
+                            synchronized(this@ScanWorker) {
+                                scannedCount++
+                                val currentTime = System.currentTimeMillis()
+                                if (currentTime - lastUpdateMs > 500 || scannedCount == tracks.size) {
+                                    lastUpdateMs = currentTime
+                                    val count = scannedCount
+                                    ScanRepository.update { it.copy(currentTitle = track.title, scannedTracks = count) }
+                                    launch { updateForeground("${count}/${tracks.size} — ${track.title}", count, tracks.size) }
+                                }
+                            }
+                        }
                     }
                 }
-            } catch (e: Exception) {
-                // Skip problematic track and continue scan
-                e.printStackTrace()
             }
-            
-            // Ensure the repository is updated with the final count if we skipped the throttle
-            if (index == tracks.size - 1) {
-                ScanRepository.update { it.copy(scannedTracks = tracks.size) }
-            }
-            // on every track. The UI observes the database flow for the list.
-            // We only update the progress markers.
         }
 
         ScanRepository.update { it.copy(isScanning = false, currentTitle = "", scannedTracks = tracks.size) }

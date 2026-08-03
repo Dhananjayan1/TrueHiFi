@@ -37,6 +37,7 @@ data class ConfidenceContribution(
     val label: String,
     val scoreChange: Int, // e.g. +15 or -10
     val message: String,
+    val insight: String = "",
     val isPositive: Boolean = scoreChange >= 0
 )
 
